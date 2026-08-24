@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Jamalify</string>
+    <string name="playback_channel_name">Pemutaran</string>
+    <string name="download_channel_name">Unduhan</string>
+    <string name="widget_art_desc">Sampul lagu</string>
+    <string name="widget_prev_desc">Lagu sebelumnya</string>
+    <string name="widget_play_desc">Putar atau jeda</string>
+    <string name="widget_next_desc">Lagu berikutnya</string>
+</resources>

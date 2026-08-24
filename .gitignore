@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+local.properties
+.idea/
+build/
+.DS_Store
+/captures
+.externalNativeBuild
+.cxx
+
+# Kredensial penandatanganan — jangan pernah ikut ter-commit
+keystore.properties
+*.jks
+*.keystore

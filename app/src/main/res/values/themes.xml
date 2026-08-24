@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Aplikasi ini selalu gelap, jadi tema jendelanya pun gelap di kedua
+        varian. `forceDarkAllowed=false` penting: tanpa itu sebagian OEM
+        (MIUI/HyperOS, One UI) menerapkan pembalikan warna otomatis di atas
+        tema kita sendiri, dan hasilnya justru teks gelap di atas latar gelap.
+    -->
+    <style name="Theme.Jamalify" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">@color/app_window</item>
+        <item name="android:navigationBarColor">@color/app_window</item>
+        <item name="android:windowBackground">@color/app_window</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

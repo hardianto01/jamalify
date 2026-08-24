@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="108" android:viewportHeight="108"
+    android:tint="#FFFFFF">
+    <!-- Kepala not kiri -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M30,72 a10,8 0 1,0 20,0 a10,8 0 1,0 -20,0 z" />
+    <!-- Tangkai kiri -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M45,36 h5 v36 h-5 z" />
+
+    <!-- Kepala not kanan, warna berbeda: dua nada, bukan satu -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M60,67 a10,8 0 1,0 20,0 a10,8 0 1,0 -20,0 z" />
+    <!-- Tangkai kanan -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M75,31 h5 v36 h-5 z" />
+
+    <!-- Balok yang mengikat keduanya -->
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M45,36 L80,31 L80,41 L45,46 Z" />
+</vector>

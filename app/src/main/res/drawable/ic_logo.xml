@@ -1,0 +1,29 @@
+<!--
+    Logo Jamalify.
+
+    Not seperdelapan berpasangan: dua kepala not yang diikat satu balok.
+    Bentuk ini dipilih karena maknanya sudah ada di notasi musik itu sendiri —
+    dua nada yang terikat menjadi satu frasa. Warna kedua kepala sengaja
+    dibedakan supaya terbaca sebagai dua, bukan satu.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp" android:height="96dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Kepala not kiri -->
+    <path android:fillColor="#00E0A4"
+        android:pathData="M30,72 a10,8 0 1,0 20,0 a10,8 0 1,0 -20,0 z" />
+    <!-- Tangkai kiri -->
+    <path android:fillColor="#00E0A4"
+        android:pathData="M45,36 h5 v36 h-5 z" />
+
+    <!-- Kepala not kanan, warna berbeda: dua nada, bukan satu -->
+    <path android:fillColor="#7CFFD9"
+        android:pathData="M60,67 a10,8 0 1,0 20,0 a10,8 0 1,0 -20,0 z" />
+    <!-- Tangkai kanan -->
+    <path android:fillColor="#7CFFD9"
+        android:pathData="M75,31 h5 v36 h-5 z" />
+
+    <!-- Balok yang mengikat keduanya -->
+    <path android:fillColor="#00E0A4"
+        android:pathData="M45,36 L80,31 L80,41 L45,46 Z" />
+</vector>
