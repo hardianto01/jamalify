@@ -28,14 +28,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
+import com.jamalsquad.jamalify.JamalifyApp
 import com.jamalsquad.jamalify.data.Song
+import com.jamalsquad.jamalify.playback.SmartShuffleManager
 import com.jamalsquad.jamalify.ui.components.Artwork
 import com.jamalsquad.jamalify.ui.components.EmptyState
 import com.jamalsquad.jamalify.ui.components.HSpace
@@ -61,6 +67,10 @@ fun PlaylistScreen(
 
     val songs by viewModel.songs.collectAsState()
     val info by viewModel.info.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val smartShuffle = remember { SmartShuffleManager(context) }
+    val player = (context.applicationContext as JamalifyApp).playerConnection
+    LaunchedEffect(songs) { player.warmUp(songs) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -126,13 +136,13 @@ fun PlaylistScreen(
                         Text("Putar")
                     }
                     OutlinedButton(
-                        onClick = { onShuffle(songs) },
+                        onClick = { onShuffle(smartShuffle.shuffleWithRecommendations(songs)) },
                         enabled = songs.isNotEmpty(),
                         modifier = Modifier.weight(1f)
                     ) {
                         Icon(Icons.Rounded.Shuffle, contentDescription = null)
                         HSpace(6.dp)
-                        Text("Acak")
+                        Text("Acak Cerdas")
                     }
                     IconButton(
                         onClick = { viewModel.downloadAll(songs) },

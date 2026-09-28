@@ -63,9 +63,36 @@ object SpotifyClient {
 
         if (!clientId.isNullOrBlank() && !clientSecret.isNullOrBlank()) {
             runCatching { fetchViaApi(type, id, clientId, clientSecret) }
-                .getOrElse { fetchViaEmbed(type, id) }
+                .getOrElse { fetchViaGuestOrEmbed(type, id) }
         } else {
+            fetchViaGuestOrEmbed(type, id)
+        }
+    }
+
+    private fun fetchViaGuestOrEmbed(type: String, id: String): SpotifyPlaylist {
+        return runCatching {
+            val token = requestGuestToken()
+            when (type) {
+                "playlist" -> fetchPlaylistApi(id, token)
+                "album" -> fetchAlbumApi(id, token)
+                else -> fetchTrackApi(id, token)
+            }
+        }.getOrElse {
             fetchViaEmbed(type, id)
+        }
+    }
+
+    private fun requestGuestToken(): String {
+        val request = Request.Builder()
+            .url("https://open.spotify.com/get_access_token")
+            .header("User-Agent", UA)
+            .build()
+        return client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("Gagal mengambil token Spotify web (HTTP ${response.code})")
+            }
+            JSONObject(body).getString("accessToken")
         }
     }
 

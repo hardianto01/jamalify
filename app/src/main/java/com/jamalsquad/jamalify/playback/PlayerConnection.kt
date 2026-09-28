@@ -8,6 +8,8 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
 import com.jamalsquad.jamalify.data.Song
+import com.jamalsquad.jamalify.data.repo.MusicRepository
+import com.jamalsquad.jamalify.data.youtube.YouTubeService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Sisi klien dari [PlaybackService]. Menyimpan MediaController dan
@@ -61,6 +64,40 @@ class PlayerConnection(private val context: Context) {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    val sleepTimer = SleepTimerManager { controller }
+    val crossfade = CrossfadeManager { controller }
+    val wiFiPreCache = WiFiPreCacheManager(context)
+    val karaokeMode = KaraokeModeManager()
+    val shakeDetector = ShakeDetector(context)
+
+    private var warmUpJob: Job? = null
+
+    /**
+     * Siapkan lagu-lagu teratas dari daftar yang baru tampil, sebelum
+     * ditekan. Resolve URL makan ±1,5 detik dan itulah sebagian besar jeda
+     * saat lagu baru ditekan; lagu pertama sekalian diambil awal audionya.
+     *
+     * Berurutan dan dibatasi [WARM_UP_COUNT] supaya membuka daftar tidak
+     * memicu rentetan permintaan ke YouTube. Daftar baru membatalkan yang lama.
+     */
+    fun warmUp(songs: List<Song>) {
+        val ids = songs.asSequence()
+            .map { it.id }
+            .filter { it.isNotBlank() && it != _currentSong.value?.id }
+            .take(WARM_UP_COUNT)
+            .toList()
+        if (ids.isEmpty()) return
+        warmUpJob?.cancel()
+        warmUpJob = scope.launch(Dispatchers.IO) {
+            // Tunda sebentar: daftar yang cuma dilewati saat scroll tidak perlu disiapkan.
+            delay(WARM_UP_DELAY_MS)
+            ids.forEachIndexed { index, id ->
+                YouTubeService.prefetchAudioUrl(id)
+                if (index == 0) PlaybackService.warmStart(id)
+            }
+        }
+    }
+
     /** Perintah yang datang sebelum controller siap ditahan dulu di sini. */
     private var pendingAction: ((MediaController) -> Unit)? = null
 
@@ -74,8 +111,8 @@ class PlayerConnection(private val context: Context) {
             _error.value = when (error.errorCode) {
                 androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
                 androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT ->
-                    "Koneksi bermasalah. Cek jaringan lalu coba lagi."
-                else -> "Lagu ini tidak bisa diputar. Coba versi lain dari hasil pencarian."
+                    "Koneksi terputus. Lagu lanjut otomatis begitu jaringan kembali."
+                else -> "Lagu ini gagal diputar. Dicoba ulang, lalu dilewati kalau tetap gagal."
             }
         }
     }
@@ -116,6 +153,10 @@ class PlayerConnection(private val context: Context) {
             player.setMediaItems(songs.map { MediaItems.from(it) }, startIndex, 0L)
             player.prepare()
             player.play()
+            // Lagu yang dipilih sendiri harus langsung terdengar penuh.
+            // Fade-in dari nol membuat awal lagu terasa seperti masih memuat.
+            crossfade.reset()
+            wiFiPreCache.preCacheUpcoming(songs, startIndex)
         }
     }
 
@@ -151,6 +192,32 @@ class PlayerConnection(private val context: Context) {
         if (index in 0 until player.mediaItemCount) player.removeMediaItem(index)
     }
 
+    /** Pindahkan lagu dari [fromIndex] ke [toIndex] di antrean. */
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) = withController { player ->
+        if (fromIndex in 0 until player.mediaItemCount && toIndex in 0 until player.mediaItemCount) {
+            val item = player.getMediaItemAt(fromIndex)
+            player.removeMediaItem(fromIndex)
+            player.addMediaItem(toIndex, item)
+        }
+    }
+
+    /**
+     * Aktifkan deteksi shake untuk memperpanjang sleep timer.
+     * Saat HP digoyang, sleep timer diperpanjang 15 menit.
+     */
+    fun enableShakeToExtend() {
+        shakeDetector.start()
+        scope.launch(Dispatchers.Main) {
+            shakeDetector.shakeEvent.collect {
+                sleepTimer.extendTimer(15)
+            }
+        }
+    }
+
+    fun disableShakeToExtend() {
+        shakeDetector.stop()
+    }
+
     fun togglePlayPause() = withController { player ->
         if (player.isPlaying) player.pause() else {
             if (player.playbackState == Player.STATE_IDLE) player.prepare()
@@ -158,7 +225,37 @@ class PlayerConnection(private val context: Context) {
         }
     }
 
-    fun next() = withController { it.seekToNextMediaItem() }
+    fun next() = withController { player ->
+        if (player.hasNextMediaItem()) {
+            player.seekToNextMediaItem()
+            crossfade.reset()
+        } else {
+            val currentMedia = player.currentMediaItem
+            val currentSong = MediaItems.toSong(currentMedia)
+            val existingIds = (0 until player.mediaItemCount).mapNotNull { player.getMediaItemAt(it).mediaId }.toSet()
+
+            scope.launch(Dispatchers.IO) {
+                val repository = MusicRepository.get(context)
+                val filtered = repository.recommendations
+                    .autoplay(currentSong, existingIds, limit = 5)
+                    .ifEmpty {
+                        runCatching { repository.trending(10) }.getOrDefault(emptyList())
+                            .filter { it.id !in existingIds }
+                            .take(5)
+                    }
+
+                if (filtered.isNotEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        val startIndex = player.mediaItemCount
+                        player.addMediaItems(filtered.map { MediaItems.from(it) })
+                        player.seekToDefaultPosition(startIndex)
+                        player.prepare()
+                        player.play()
+                    }
+                }
+            }
+        }
+    }
 
     fun previous() = withController { player ->
         if (player.currentPosition > 3_000) player.seekTo(0) else player.seekToPreviousMediaItem()
@@ -237,10 +334,28 @@ class PlayerConnection(private val context: Context) {
                     controller?.let { player ->
                         _position.value = player.currentPosition.coerceAtLeast(0L)
                         _duration.value = player.duration.takeIf { it > 0 } ?: 0L
+                        crossfade.checkCrossfade(_position.value, _duration.value)
                     }
                     delay(500)
                 }
             }
         }
+    }
+
+    fun openEqualizer(context: Context) {
+        runCatching {
+            val intent = android.content.Intent(android.media.audiofx.AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL).apply {
+                putExtra(android.media.audiofx.AudioEffect.EXTRA_PACKAGE_NAME, context.packageName)
+                putExtra(android.media.audiofx.AudioEffect.EXTRA_CONTENT_TYPE, android.media.audiofx.AudioEffect.CONTENT_TYPE_MUSIC)
+            }
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+            }
+        }
+    }
+
+    private companion object {
+        const val WARM_UP_COUNT = 3
+        const val WARM_UP_DELAY_MS = 400L
     }
 }

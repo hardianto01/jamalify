@@ -8,6 +8,7 @@ import com.jamalsquad.jamalify.data.db.DownloadedSong
 import com.jamalsquad.jamalify.data.db.HistoryEntity
 import com.jamalsquad.jamalify.data.db.MusicDao
 import com.jamalsquad.jamalify.data.db.JamalifyDatabase
+import com.jamalsquad.jamalify.data.db.PlayEvent
 import com.jamalsquad.jamalify.data.db.PlaylistEntity
 import com.jamalsquad.jamalify.data.db.PlaylistWithCount
 import com.jamalsquad.jamalify.data.db.SongEntity
@@ -25,21 +26,26 @@ class MusicRepository(
     private val downloadDir: File
 ) {
 
+    /** Satu mesin per proses, supaya cache lagu terkaitnya dipakai bersama. */
+    val recommendations by lazy { RecommendationEngine(this) }
+
     // --- sumber online ---
 
-    suspend fun search(query: String) = YouTubeService.search(query)
+    suspend fun search(query: String, limit: Int = 50) = YouTubeService.search(query, limit)
 
-    suspend fun trending() = YouTubeService.trending()
+    suspend fun trending(limit: Int = 50) = YouTubeService.trending(limit)
 
-    suspend fun trendingMore() = YouTubeService.trendingMore()
+    suspend fun trendingMore(limit: Int = 50) = YouTubeService.trendingMore(limit)
 
     fun hasMoreTrending() = YouTubeService.hasMoreTrending()
 
-    suspend fun shelf(query: String) = YouTubeService.shelf(query)
+    suspend fun shelf(query: String, limit: Int = 50) = YouTubeService.shelf(query, limit)
 
-    suspend fun related(videoId: String) = YouTubeService.related(videoId)
+    suspend fun related(videoId: String, limit: Int = 50) = YouTubeService.related(videoId, limit)
 
-    suspend fun youtubePlaylist(url: String) = YouTubeService.playlist(url)
+    suspend fun youtubePlaylist(url: String, maxSongs: Int = 5000) = YouTubeService.playlist(url, maxSongs)
+
+    suspend fun searchPlaylists(query: String, limit: Int = 10) = YouTubeService.searchPlaylists(query, limit)
 
     suspend fun songInfo(videoId: String) = YouTubeService.songInfo(videoId)
 
@@ -47,7 +53,13 @@ class MusicRepository(
 
     fun favorites(): Flow<List<Song>> = dao.observeFavorites().mapToSongs()
 
+    suspend fun getFavoritesList(limit: Int = 20): List<Song> =
+        dao.getFavoritesList(limit).map { it.toSong() }
+
     fun recentlyPlayed(): Flow<List<Song>> = dao.observeRecentlyPlayed().mapToSongs()
+
+    suspend fun getRecentlyPlayedList(limit: Int = 20): List<Song> =
+        dao.getRecentlyPlayedList(limit).map { it.toSong() }
 
     fun playlists(): Flow<List<PlaylistWithCount>> = dao.observePlaylists()
 
@@ -64,12 +76,22 @@ class MusicRepository(
         dao.setFavorite(song.id, !current)
     }
 
-    suspend fun recordPlayed(song: Song) {
+    /** Mengembalikan id baris riwayat, untuk diisi lama dengarnya nanti. */
+    suspend fun recordPlayed(song: Song): Long {
         dao.insertSong(SongEntity.from(song))
-        dao.insertHistory(HistoryEntity(songId = song.id))
+        return dao.insertHistory(HistoryEntity(songId = song.id))
     }
 
+    suspend fun setListened(historyId: Long, listenedMs: Long) =
+        dao.setListened(historyId, listenedMs)
+
+    suspend fun playEventsSince(since: Long): List<PlayEvent> = dao.playEventsSince(since)
+
     suspend fun clearHistory() = dao.clearHistory()
+
+    suspend fun getHistoryCount(): Int = dao.getHistoryCount()
+
+    suspend fun getTopArtist(): String? = dao.getTopArtist()
 
     suspend fun createPlaylist(name: String): Long =
         dao.insertPlaylist(PlaylistEntity(name = name))

@@ -29,6 +29,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +41,7 @@ import com.jamalsquad.jamalify.data.Song
 fun MiniPlayer(
     song: Song?,
     isPlaying: Boolean,
-    progress: Float,
+    progress: () -> Float,
     onExpand: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -54,12 +55,26 @@ fun MiniPlayer(
     ) {
         if (song == null) return@AnimatedVisibility
 
+        val ambient = com.jamalsquad.jamalify.ui.theme.rememberAmbientColors(song.thumbnail)
+        val animatedTopColor by androidx.compose.animation.animateColorAsState(
+            targetValue = ambient.topColor,
+            animationSpec = tween(600),
+            label = "mini_topColor"
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .background(
+                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        colors = listOf(
+                            animatedTopColor.copy(alpha = 0.95f),
+                            MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    )
+                )
                 .clickable(onClick = onExpand)
         ) {
             Row(
@@ -72,12 +87,22 @@ fun MiniPlayer(
                 HSpace(12.dp)
 
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = song.title,
-                        style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = song.title,
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        HSpace(6.dp)
+                        AudioVisualizer(
+                            isPlaying = isPlaying,
+                            barCount = 3,
+                            barWidth = 2.5.dp,
+                            height = 12.dp
+                        )
+                    }
                     Text(
                         text = song.artist,
                         style = MaterialTheme.typography.bodyMedium,
@@ -114,7 +139,7 @@ fun MiniPlayer(
 
             Box(modifier = Modifier.fillMaxWidth().height(2.dp)) {
                 LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
+                    progress = { progress().coerceIn(0f, 1f) },
                     modifier = Modifier.fillMaxWidth().height(2.dp),
                     color = MaterialTheme.colorScheme.primary,
                     trackColor = MaterialTheme.colorScheme.outline

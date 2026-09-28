@@ -1,5 +1,6 @@
 package com.jamalsquad.jamalify.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -73,13 +74,37 @@ data class PlaylistSongEntity(
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [Index("songId")]
+    indices = [Index("songId"), Index("playedAt")]
 )
 data class HistoryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val songId: String,
-    val playedAt: Long = System.currentTimeMillis()
-)
+    val playedAt: Long = System.currentTimeMillis(),
+    /**
+     * Berapa lama lagu ini benar-benar terdengar pada pemutaran ini.
+     * -1 = tidak diketahui (riwayat lama, atau lagu tidak sempat dimuat).
+     * Inilah pembeda "didengarkan" dan "di-skip" untuk rekomendasi.
+     */
+    @ColumnInfo(defaultValue = "-1") val listenedMs: Long = UNKNOWN_LISTENED
+) {
+    companion object {
+        const val UNKNOWN_LISTENED = -1L
+    }
+}
+
+/** Satu kejadian pemutaran beserta data lagunya, bahan mentah rekomendasi. */
+data class PlayEvent(
+    val songId: String,
+    val title: String,
+    val artist: String,
+    val thumbnail: String?,
+    val durationSec: Long,
+    val isFavorite: Boolean,
+    val playedAt: Long,
+    val listenedMs: Long
+) {
+    fun toSong() = Song(songId, title, artist, thumbnail, durationSec)
+}
 
 enum class DownloadState { QUEUED, RUNNING, COMPLETED, FAILED }
 

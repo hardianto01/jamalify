@@ -13,6 +13,7 @@ import com.jamalsquad.jamalify.data.db.DownloadEntity
 import com.jamalsquad.jamalify.data.db.DownloadState
 import com.jamalsquad.jamalify.data.db.JamalifyDatabase
 import com.jamalsquad.jamalify.data.repo.MusicRepository
+import com.jamalsquad.jamalify.data.youtube.StreamHeadersInterceptor
 import com.jamalsquad.jamalify.data.youtube.YouTubeService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ class DownloadService : Service() {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .addInterceptor(StreamHeadersInterceptor())
         .build()
 
     private var running = false
@@ -98,10 +100,9 @@ class DownloadService : Service() {
     }
 
     private suspend fun downloadTo(songId: String, target: File, title: String) {
-        val url = YouTubeService.resolveAudioUrl(songId)
+        val url = YouTubeService.resolveAudioUrl(songId, hiRes = false)
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "Mozilla/5.0")
             .build()
 
         val dao = JamalifyDatabase.get(this).musicDao()

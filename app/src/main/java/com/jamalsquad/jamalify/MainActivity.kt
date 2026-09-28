@@ -171,8 +171,11 @@ private fun JamalifyRoot() {
 
     val currentSong by player.currentSong.collectAsState()
     val isPlaying by player.isPlaying.collectAsState()
-    val position by player.position.collectAsState()
-    val duration by player.duration.collectAsState()
+    // Posisi berubah tiap 500ms. Dibaca sebagai State dan baru dibaca di
+    // dalam lambda progres, supaya yang digambar ulang hanya bilah progres —
+    // bukan seluruh layar beserta daftar lagunya.
+    val position = player.position.collectAsState()
+    val duration = player.duration.collectAsState()
     val playbackError by player.error.collectAsState()
 
     val sheet = rememberSongSheetController()
@@ -199,7 +202,7 @@ private fun JamalifyRoot() {
         }
     }
 
-    val play: (List<Song>, Int) -> Unit = { songs, index -> player.play(songs, index) }
+    val play: (List<Song>, Int) -> Unit = remember(player) { { songs, index -> player.play(songs, index) } }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -209,7 +212,10 @@ private fun JamalifyRoot() {
                 MiniPlayer(
                     song = currentSong,
                     isPlaying = isPlaying,
-                    progress = if (duration > 0) position.toFloat() / duration else 0f,
+                    progress = {
+                        val total = duration.value
+                        if (total > 0) position.value.toFloat() / total else 0f
+                    },
                     onExpand = { showPlayer = true },
                     onPlayPause = player::togglePlayPause,
                     onNext = player::next

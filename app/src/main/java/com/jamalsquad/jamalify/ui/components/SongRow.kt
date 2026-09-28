@@ -61,11 +61,12 @@ fun SongRow(
         }
 
         if (isPlaying) {
-            Icon(
-                imageVector = Icons.Rounded.Equalizer,
-                contentDescription = "Sedang diputar",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+            AudioVisualizer(
+                isPlaying = true,
+                barCount = 3,
+                barWidth = 2.5.dp,
+                height = 16.dp,
+                color = MaterialTheme.colorScheme.primary
             )
         }
 

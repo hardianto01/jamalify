@@ -21,14 +21,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.jamalsquad.jamalify.util.Thumbnails
 
 @Composable
 fun SectionHeader(
@@ -70,8 +75,16 @@ fun Artwork(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         } else {
+            val context = LocalContext.current
+            val px = with(LocalDensity.current) { size.roundToPx() }
+            val request = remember(url, px) {
+                ImageRequest.Builder(context)
+                    .data(Thumbnails.sized(url, px))
+                    .size(px)
+                    .build()
+            }
             AsyncImage(
-                model = url,
+                model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()

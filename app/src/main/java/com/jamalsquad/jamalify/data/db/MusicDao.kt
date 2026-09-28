@@ -30,13 +30,32 @@ interface MusicDao {
     @Query("SELECT * FROM songs WHERE isFavorite = 1 ORDER BY addedAt DESC")
     fun observeFavorites(): Flow<List<SongEntity>>
 
+    @Query("SELECT * FROM songs WHERE isFavorite = 1 ORDER BY addedAt DESC LIMIT :limit")
+    suspend fun getFavoritesList(limit: Int = 20): List<SongEntity>
+
     @Query("SELECT EXISTS(SELECT 1 FROM songs WHERE id = :id AND isFavorite = 1)")
     fun observeIsFavorite(id: String): Flow<Boolean>
 
     // --- riwayat ---
 
     @Insert
-    suspend fun insertHistory(entry: HistoryEntity)
+    suspend fun insertHistory(entry: HistoryEntity): Long
+
+    @Query("UPDATE history SET listenedMs = :listenedMs WHERE id = :historyId")
+    suspend fun setListened(historyId: Long, listenedMs: Long)
+
+    @Query(
+        """
+        SELECT h.songId AS songId, s.title AS title, s.artist AS artist,
+               s.thumbnail AS thumbnail, s.durationSec AS durationSec,
+               s.isFavorite AS isFavorite, h.playedAt AS playedAt, h.listenedMs AS listenedMs
+        FROM history h
+        INNER JOIN songs s ON s.id = h.songId
+        WHERE h.playedAt >= :since
+        ORDER BY h.playedAt DESC
+        """
+    )
+    suspend fun playEventsSince(since: Long): List<PlayEvent>
 
     @Query(
         """
@@ -48,6 +67,31 @@ interface MusicDao {
         """
     )
     fun observeRecentlyPlayed(limit: Int = 50): Flow<List<SongEntity>>
+
+    @Query(
+        """
+        SELECT s.* FROM songs s
+        INNER JOIN (SELECT songId, MAX(playedAt) AS lastPlayed FROM history GROUP BY songId) h
+            ON s.id = h.songId
+        ORDER BY h.lastPlayed DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getRecentlyPlayedList(limit: Int = 20): List<SongEntity>
+
+    @Query("SELECT COUNT(*) FROM history")
+    suspend fun getHistoryCount(): Int
+
+    @Query(
+        """
+        SELECT s.artist FROM songs s
+        INNER JOIN history h ON s.id = h.songId
+        GROUP BY s.artist
+        ORDER BY COUNT(*) DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getTopArtist(): String?
 
     @Query("DELETE FROM history")
     suspend fun clearHistory()

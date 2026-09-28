@@ -26,6 +26,14 @@ data class RemotePlaylist(
     val songs: List<Song>
 )
 
+/** Playlist YouTube hasil pencarian; isinya baru diambil saat dibuka. */
+data class PlaylistSummary(
+    val url: String,
+    val title: String,
+    val author: String,
+    val thumbnail: String?
+)
+
 /** Satu baris lagu Spotify yang masih perlu dicocokkan ke YouTube. */
 data class SpotifyTrack(
     val title: String,

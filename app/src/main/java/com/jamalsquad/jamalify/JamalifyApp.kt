@@ -2,9 +2,14 @@ package com.jamalsquad.jamalify
 
 import android.app.Application
 import androidx.media3.common.util.UnstableApi
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.jamalsquad.jamalify.data.repo.MusicRepository
 import com.jamalsquad.jamalify.data.youtube.YouTubeService
 import com.jamalsquad.jamalify.playback.PlayerConnection
+import com.jamalsquad.jamalify.playback.SoundModeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -12,7 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @UnstableApi
-class JamalifyApp : Application() {
+class JamalifyApp : Application(), ImageLoaderFactory {
 
     lateinit var repository: MusicRepository
         private set
@@ -24,6 +29,8 @@ class JamalifyApp : Application() {
         super.onCreate()
         instance = this
         repository = MusicRepository.get(this)
+        // Sebelum antrean pertama dibuat: kualitas Hi-Res ikut tertulis di URI lagu.
+        SoundModeManager.init(this)
         playerConnection = PlayerConnection(this)
 
         // Inisialisasi ekstraktor di latar supaya tidak menahan layar pertama.
@@ -51,6 +58,26 @@ class JamalifyApp : Application() {
         }.getOrNull() ?: return
         runCatching { YouTubeService.prefetchAudioUrl(last.id) }
     }
+
+    /**
+     * Satu ImageLoader untuk seluruh aplikasi, jadi cache memori dan disknya
+     * dipakai bersama oleh daftar lagu, pemutar, palet warna, dan widget.
+     * Header cache i.ytimg pendek, padahal sampul video tidak pernah berubah —
+     * diabaikan supaya sampul yang sudah pernah tampil tidak diunduh ulang.
+     */
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .memoryCache {
+            MemoryCache.Builder(this).maxSizePercent(0.25).build()
+        }
+        .diskCache {
+            DiskCache.Builder()
+                .directory(cacheDir.resolve("artwork"))
+                .maxSizeBytes(128L * 1024 * 1024)
+                .build()
+        }
+        .respectCacheHeaders(false)
+        .crossfade(150)
+        .build()
 
     companion object {
         lateinit var instance: JamalifyApp

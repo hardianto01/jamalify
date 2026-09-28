@@ -10,11 +10,12 @@ import android.widget.RemoteViews
 import androidx.core.graphics.drawable.toBitmap
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaButtonReceiver
-import coil.ImageLoader
+import coil.imageLoader
 import coil.request.ImageRequest
 import com.jamalsquad.jamalify.MainActivity
 import com.jamalsquad.jamalify.R
 import com.jamalsquad.jamalify.data.Song
+import com.jamalsquad.jamalify.util.Thumbnails
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -84,12 +85,12 @@ object JamalifyWidget {
         scope.launch {
             val bitmap = runCatching {
                 val request = ImageRequest.Builder(context)
-                    .data(artUrl)
+                    .data(Thumbnails.sized(artUrl, 256))
                     .size(256, 256)
                     // RemoteViews tidak bisa membawa hardware bitmap lintas proses.
                     .allowHardware(false)
                     .build()
-                ImageLoader(context).execute(request).drawable?.toBitmap()
+                context.imageLoader.execute(request).drawable?.toBitmap()
             }.getOrNull() ?: return@launch
 
             val withArt = buildViews(context, song, isPlaying, artwork = bitmap)
