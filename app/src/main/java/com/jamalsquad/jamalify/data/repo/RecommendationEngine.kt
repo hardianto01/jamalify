@@ -26,7 +26,7 @@ import kotlin.random.Random
  * Acuan dipilih acak berbobot, jadi setiap refresh hasilnya berbeda tanpa
  * kehilangan arah selera.
  */
-class RecommendationEngine(private val repository: MusicRepository) {
+class RecommendationEngine(private val repository: RecommendationSource) {
 
     /** Ringkasan kebiasaan dengar satu lagu. */
     private data class SongStats(

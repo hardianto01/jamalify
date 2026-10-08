@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Jamalify"
 include(":app")
+include(":desktop")

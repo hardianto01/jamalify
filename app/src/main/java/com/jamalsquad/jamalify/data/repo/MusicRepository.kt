@@ -24,7 +24,7 @@ import java.io.File
 class MusicRepository(
     private val dao: MusicDao,
     private val downloadDir: File
-) {
+) : RecommendationSource {
 
     /** Satu mesin per proses, supaya cache lagu terkaitnya dipakai bersama. */
     val recommendations by lazy { RecommendationEngine(this) }
@@ -41,7 +41,7 @@ class MusicRepository(
 
     suspend fun shelf(query: String, limit: Int = 50) = YouTubeService.shelf(query, limit)
 
-    suspend fun related(videoId: String, limit: Int = 50) = YouTubeService.related(videoId, limit)
+    override suspend fun related(videoId: String, limit: Int) = YouTubeService.related(videoId, limit)
 
     suspend fun youtubePlaylist(url: String, maxSongs: Int = 5000) = YouTubeService.playlist(url, maxSongs)
 
@@ -53,12 +53,12 @@ class MusicRepository(
 
     fun favorites(): Flow<List<Song>> = dao.observeFavorites().mapToSongs()
 
-    suspend fun getFavoritesList(limit: Int = 20): List<Song> =
+    override suspend fun getFavoritesList(limit: Int): List<Song> =
         dao.getFavoritesList(limit).map { it.toSong() }
 
     fun recentlyPlayed(): Flow<List<Song>> = dao.observeRecentlyPlayed().mapToSongs()
 
-    suspend fun getRecentlyPlayedList(limit: Int = 20): List<Song> =
+    override suspend fun getRecentlyPlayedList(limit: Int): List<Song> =
         dao.getRecentlyPlayedList(limit).map { it.toSong() }
 
     fun playlists(): Flow<List<PlaylistWithCount>> = dao.observePlaylists()
@@ -85,7 +85,7 @@ class MusicRepository(
     suspend fun setListened(historyId: Long, listenedMs: Long) =
         dao.setListened(historyId, listenedMs)
 
-    suspend fun playEventsSince(since: Long): List<PlayEvent> = dao.playEventsSince(since)
+    override suspend fun playEventsSince(since: Long): List<PlayEvent> = dao.playEventsSince(since)
 
     suspend fun clearHistory() = dao.clearHistory()
 

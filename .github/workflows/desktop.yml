@@ -1,0 +1,135 @@
+name: Desktop
+
+on:
+  push:
+    tags:
+      - "desktop-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VLC_VERSION: "3.0.24"
+  VLC_SHA256: "fcf30850371ad10c9373cc4f0f4501e7dee49e3e9ae9f20c72fb2661a1ca6323"
+
+jobs:
+  package:
+    name: Paket ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Versi dipatok, bukan latest: jpackage menurunkan Depends deb dari
+          # pustaka mesin build. 24.04 -> deb jalan di Ubuntu 24.04+/Debian 13+
+          # (libpng16-16t64); runner lebih baru akan menaikkan batas minimum itu.
+          - name: linux
+            os: ubuntu-24.04
+            tasks: ":desktop:packageDeb :desktop:packageRpm :desktop:packageAppImage"
+          - name: windows
+            os: windows-latest
+            tasks: ":desktop:packageMsi :desktop:packageExe"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Tag desktop-v3.5.0 -> 3.5.0; workflow_dispatch memakai versi di build.gradle.kts.
+      - name: Tentukan versi
+        id: version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/desktop-v* ]]; then
+            v="${GITHUB_REF#refs/tags/desktop-v}"
+            if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag harus berbentuk desktop-vMAJOR.MINOR.PATCH (dapat: $v)"
+              exit 1
+            fi
+            echo "gradle_args=-Pjamalify.version=$v" >> "$GITHUB_OUTPUT"
+          else
+            echo "gradle_args=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pasang rpmbuild
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y rpm
+
+      # libVLC dibundel supaya installer Windows jalan tanpa VLC terpasang.
+      # NativeVlc.kt mencarinya di <compose.application.resources.dir>/vlc.
+      - name: Unduh dan bundel libVLC (win64)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = "$env:RUNNER_TEMP\vlc.zip"
+          $url = "https://download.videolan.org/pub/videolan/vlc/$env:VLC_VERSION/win64/vlc-$env:VLC_VERSION-win64.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:VLC_SHA256) { throw "SHA256 VLC tidak cocok: $hash" }
+          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\vlc-x"
+          $src = "$env:RUNNER_TEMP\vlc-x\vlc-$env:VLC_VERSION"
+          $dst = "desktop\resources\windows-x64\vlc"
+          New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item "$src\libvlc.dll", "$src\libvlccore.dll" $dst
+          Copy-Item "$src\plugins" $dst -Recurse
+          # Antarmuka Qt/skins VLC tidak dipakai vlcj dan paling besar.
+          Remove-Item "$dst\plugins\gui" -Recurse -Force
+          Remove-Item "$dst\plugins\plugins.dat" -Force -ErrorAction SilentlyContinue
+          # Bangun ulang cache plugin supaya startup tidak memindai ulang semua plugin.
+          & "$src\vlc-cache-gen.exe" "$((Resolve-Path "$dst\plugins").Path)"
+          if (-not (Test-Path "$dst\plugins\plugins.dat")) { Write-Warning "plugins.dat tidak terbentuk; VLC akan memindai plugin saat start" }
+          Copy-Item "$src\COPYING.txt" "$dst\COPYING-VLC.txt"
+          "{0:N1} MB" -f ((Get-ChildItem $dst -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+
+      - name: Build paket
+        shell: bash
+        run: ./gradlew ${{ matrix.tasks }} ${{ steps.version.outputs.gradle_args }} --stacktrace
+
+      - name: Kemas AppImage (direktori) ke tar.gz
+        if: runner.os == 'Linux'
+        run: |
+          cd desktop/build/compose/binaries/main/app
+          tar -czf Jamalify-linux-x64-appimage.tar.gz Jamalify
+          mv Jamalify-linux-x64-appimage.tar.gz ../
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jamalify-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            desktop/build/compose/binaries/main/deb/*.deb
+            desktop/build/compose/binaries/main/rpm/*.rpm
+            desktop/build/compose/binaries/main/*.tar.gz
+            desktop/build/compose/binaries/main/msi/*.msi
+            desktop/build/compose/binaries/main/exe/*.exe
+
+  release:
+    name: Rilis GitHub
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/desktop-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - run: ls -lR dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Jamalify Desktop ${{ github.ref_name }}
+          generate_release_notes: true
+          files: dist/**/*

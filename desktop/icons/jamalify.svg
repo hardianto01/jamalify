@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Diturunkan dari app/src/main/res/drawable/ic_launcher_foreground.xml (ikon adaptif Android).
+     Kanvas 108x108 dipotong ke 12..96 supaya logo mengisi ikon desktop. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="12 12 84 84">
+  <rect x="12" y="12" width="84" height="84" rx="18" ry="18" fill="#0A0E12"/>
+  <path fill="#00E0A4" d="M30,72 a10,8 0 1,0 20,0 a10,8 0 1,0 -20,0 z"/>
+  <path fill="#00E0A4" d="M45,36 h5 v36 h-5 z"/>
+  <path fill="#7CFFD9" d="M60,67 a10,8 0 1,0 20,0 a10,8 0 1,0 -20,0 z"/>
+  <path fill="#7CFFD9" d="M75,31 h5 v36 h-5 z"/>
+  <path fill="#00E0A4" d="M45,36 L80,31 L80,41 L45,46 Z"/>
+</svg>
