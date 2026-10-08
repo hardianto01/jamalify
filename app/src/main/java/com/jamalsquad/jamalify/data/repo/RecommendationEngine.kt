@@ -107,6 +107,19 @@ class RecommendationEngine(private val repository: MusicRepository) {
         return rankCandidates(taste, seeds, exclude = excludeIds, limit = limit)
     }
 
+    /**
+     * Saran lagu untuk ditambahkan ke sebuah koleksi (playlist atau favorit).
+     * Benihnya diambil acak dari isi koleksi, jadi tiap kali disegarkan
+     * sarannya berganti; koleksi kosong memakai selera umum.
+     */
+    suspend fun suggestionsFor(collection: List<Song>, limit: Int = 15): List<Song> {
+        val taste = loadTaste()
+        val seeds = collection.shuffled().take(3).map { Seed(it, 1.0) }
+            .ifEmpty { pickSeeds(taste, count = 3) }
+        if (seeds.isEmpty()) return quickPicks(limit)
+        return rankCandidates(taste, seeds, exclude = collection.map { it.id }.toSet(), limit = limit)
+    }
+
     /** Playlist yang dibentuk dari kebiasaan dengar, bukan sekadar urutan riwayat. */
     data class PersonalPlaylist(
         val id: String,

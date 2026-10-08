@@ -27,8 +27,8 @@ android {
         applicationId = "com.jamalsquad.jamalify"
         minSdk = 24
         targetSdk = 34
-        versionCode = 9
-        versionName = "3.4"
+        versionCode = 10
+        versionName = "3.5"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -123,6 +123,7 @@ dependencies {
     // Networking + images
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("dev.chrisbanes.haze:haze:1.1.1")
     implementation("androidx.palette:palette-ktx:1.0.0")
 
     // YouTube extraction

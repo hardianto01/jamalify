@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="app_window">#0A0E12</color>
+    <color name="app_window">#FFFFFF</color>
+    <color name="splash_circle">#F1F3F6</color>
+    <color name="splash_mark">#171C26</color>
     <color name="ic_launcher_background">#0A0E12</color>
     <color name="widget_background">#1B232C</color>
     <color name="widget_text">#F2F5F7</color>

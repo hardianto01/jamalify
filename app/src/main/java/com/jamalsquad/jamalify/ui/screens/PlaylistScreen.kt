@@ -1,29 +1,11 @@
 package com.jamalsquad.jamalify.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import android.widget.Toast
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Shuffle
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,26 +13,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.util.UnstableApi
 import com.jamalsquad.jamalify.JamalifyApp
 import com.jamalsquad.jamalify.data.Song
 import com.jamalsquad.jamalify.playback.SmartShuffleManager
-import com.jamalsquad.jamalify.ui.components.Artwork
 import com.jamalsquad.jamalify.ui.components.EmptyState
-import com.jamalsquad.jamalify.ui.components.HSpace
-import com.jamalsquad.jamalify.ui.components.SongRow
+import com.jamalsquad.jamalify.ui.components.NewPlaylistDialog
+import com.jamalsquad.jamalify.ui.components.PlayerIcons
+import com.jamalsquad.jamalify.ui.components.PlaylistAction
+import com.jamalsquad.jamalify.ui.components.PlaylistDetail
 import com.jamalsquad.jamalify.ui.components.SongSheetController
-import com.jamalsquad.jamalify.ui.components.VSpace
 import com.jamalsquad.jamalify.ui.viewmodel.PlaylistViewModel
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Playlist buatan pengguna, juga "Lagu yang Disukai" lewat
+ * [com.jamalsquad.jamalify.ui.viewmodel.FAVORITES_PLAYLIST_ID]. Keduanya bisa
+ * ditambah dari saran algoritma di bawah daftar lagu; hanya playlist biasa
+ * yang bisa diganti nama dan dihapus.
+ */
 @UnstableApi
 @Composable
 fun PlaylistScreen(
@@ -67,110 +49,81 @@ fun PlaylistScreen(
 
     val songs by viewModel.songs.collectAsState()
     val info by viewModel.info.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val suggestions by viewModel.suggestions.collectAsState()
+    val suggesting by viewModel.suggesting.collectAsState()
+    val context = LocalContext.current
     val smartShuffle = remember { SmartShuffleManager(context) }
     val player = (context.applicationContext as JamalifyApp).playerConnection
     LaunchedEffect(songs) { player.warmUp(songs) }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        info?.name ?: "Playlist",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Kembali")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+    val favorites = playlistId < 0
+    var renaming by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    PlaylistDetail(
+        title = info?.name ?: "Playlist",
+        meta = "${if (favorites) "Favorit" else "Playlist"} • ${songs.size} lagu",
+        artworkUrl = info?.thumbnail,
+        songs = songs,
+        currentSongId = currentSongId,
+        onBack = onBack,
+        onPlay = onPlay,
+        onShuffle = { onShuffle(smartShuffle.shuffleWithRecommendations(songs)) },
+        onMore = { song -> sheet.show(song) { viewModel.remove(song) } },
+        shuffleLabel = "Acak Cerdas",
+        contentPadding = PaddingValues(
+            top = contentPadding.calculateTopPadding(),
+            bottom = contentPadding.calculateBottomPadding()
+        ),
+        actions = {
+            PlaylistAction(PlayerIcons.Download, "Unduh semua", onClick = { viewModel.downloadAll(songs) })
+            if (!favorites) {
+                PlaylistAction(PlayerIcons.Edit, "Ganti nama", onClick = { renaming = true })
+                PlaylistAction(PlayerIcons.Trash, "Hapus playlist", onClick = { confirmDelete = true })
+            }
+        },
+        empty = {
+            EmptyState(
+                title = if (favorites) "Belum ada favorit" else "Playlist masih kosong",
+                subtitle = "Pilih dari saran di bawah, atau lewat menu tiga titik di lagu mana pun."
             )
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
-            contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding())
-        ) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Artwork(url = info?.thumbnail, size = 100.dp, corner = 12.dp)
-                    HSpace(16.dp)
-                    Column {
-                        Text(
-                            info?.name ?: "Playlist",
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            "${songs.size} lagu",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
+        },
+        suggestions = suggestions,
+        suggesting = suggesting,
+        onAddSuggestion = { song ->
+            viewModel.add(song)
+            Toast.makeText(context, "Ditambahkan: ${song.title}", Toast.LENGTH_SHORT).show()
+        },
+        onPlaySuggestion = { song -> onPlay(listOf(song), 0) },
+        onRefreshSuggestions = viewModel::refreshSuggestions
+    )
 
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Button(
-                        onClick = { onPlay(songs, 0) },
-                        enabled = songs.isNotEmpty(),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null)
-                        HSpace(6.dp)
-                        Text("Putar")
-                    }
-                    OutlinedButton(
-                        onClick = { onShuffle(smartShuffle.shuffleWithRecommendations(songs)) },
-                        enabled = songs.isNotEmpty(),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Rounded.Shuffle, contentDescription = null)
-                        HSpace(6.dp)
-                        Text("Acak Cerdas")
-                    }
-                    IconButton(
-                        onClick = { viewModel.downloadAll(songs) },
-                        enabled = songs.isNotEmpty()
-                    ) {
-                        Icon(Icons.Rounded.Download, contentDescription = "Unduh semua")
-                    }
-                }
+    if (renaming) {
+        NewPlaylistDialog(
+            title = "Ganti nama",
+            initialName = info?.name.orEmpty(),
+            confirmLabel = "Simpan",
+            onDismiss = { renaming = false },
+            onConfirm = { name ->
+                viewModel.rename(name)
+                renaming = false
             }
+        )
+    }
 
-            if (songs.isEmpty()) {
-                item {
-                    EmptyState(
-                        title = "Playlist masih kosong",
-                        subtitle = "Tambahkan lagu lewat menu tiga titik di hasil pencarian."
-                    )
-                }
-            } else {
-                itemsIndexed(songs, key = { _, song -> song.id }) { index, song ->
-                    SongRow(
-                        song = song,
-                        isPlaying = song.id == currentSongId,
-                        onClick = { onPlay(songs, index) },
-                        onMore = { sheet.show(song) { viewModel.remove(song.id) } }
-                    )
-                }
-                item { VSpace(24.dp) }
-            }
-        }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Hapus playlist?") },
+            text = { Text("\"${info?.name.orEmpty()}\" akan dihapus. Lagunya tetap ada di favorit dan unduhan.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    viewModel.delete()
+                    onBack()
+                }) { Text("Hapus", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Batal") } }
+        )
     }
 }

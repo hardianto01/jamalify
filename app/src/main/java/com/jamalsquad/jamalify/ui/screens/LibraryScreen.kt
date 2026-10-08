@@ -1,9 +1,19 @@
 package com.jamalsquad.jamalify.ui.screens
 
+import com.jamalsquad.jamalify.ui.components.NewPlaylistDialog
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import com.jamalsquad.jamalify.ui.components.PlayerIcons
+import com.jamalsquad.jamalify.ui.viewmodel.FAVORITES_PLAYLIST_ID
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -64,7 +74,6 @@ fun LibraryScreen(
     onPlay: (List<Song>, Int) -> Unit,
     onOpenPlaylist: (Long) -> Unit,
     onOpenImport: () -> Unit,
-    onOpenAbout: () -> Unit,
     sheet: SongSheetController,
     contentPadding: PaddingValues,
     viewModel: LibraryViewModel = viewModel()
@@ -85,9 +94,6 @@ fun LibraryScreen(
         ) {
             Text("Library", style = MaterialTheme.typography.headlineMedium)
             Row {
-                IconButton(onClick = onOpenAbout) {
-                    Icon(Icons.Rounded.Info, contentDescription = "Tentang aplikasi")
-                }
                 IconButton(onClick = onOpenImport) {
                     Icon(Icons.Rounded.CloudDownload, contentDescription = "Impor playlist")
                 }
@@ -128,11 +134,15 @@ fun LibraryScreen(
                 1 -> SongTab(
                     songs = favorites,
                     emptyTitle = "Belum ada favorit",
-                    emptySubtitle = "Ketuk ikon hati di pemutar untuk menyimpan lagu ke sini.",
+                    emptySubtitle = "Ketuk ikon hati di pemutar, atau pilih dari saran lagu.",
                     currentSongId = currentSongId,
                     onPlay = onPlay,
                     sheet = sheet,
-                    contentPadding = bottom
+                    contentPadding = bottom,
+                    emptyAction = {
+                        TextButton(onClick = { onOpenPlaylist(FAVORITES_PLAYLIST_ID) }) { Text("Tambah lagu") }
+                    },
+                    header = { AddSongsRow { onOpenPlaylist(FAVORITES_PLAYLIST_ID) } }
                 )
 
                 2 -> DownloadTab(downloads, currentSongId, onPlay, viewModel, bottom)
@@ -161,7 +171,7 @@ fun LibraryScreen(
     }
 
     if (showCreateDialog) {
-        CreatePlaylistDialog(
+        NewPlaylistDialog(
             onDismiss = { showCreateDialog = false },
             onConfirm = { name ->
                 viewModel.createPlaylist(name)
@@ -255,10 +265,11 @@ private fun SongTab(
     onPlay: (List<Song>, Int) -> Unit,
     sheet: SongSheetController,
     contentPadding: PaddingValues,
-    header: @Composable (() -> Unit)? = null
+    header: @Composable (() -> Unit)? = null,
+    emptyAction: @Composable (() -> Unit)? = null
 ) {
     if (songs.isEmpty()) {
-        EmptyState(title = emptyTitle, subtitle = emptySubtitle)
+        EmptyState(title = emptyTitle, subtitle = emptySubtitle, action = emptyAction)
         return
     }
 
@@ -355,27 +366,35 @@ private fun DownloadTab(
     }
 }
 
+/** Baris pembuka halaman favorit, tempat saran lagu dari algoritma. */
 @Composable
-private fun CreatePlaylistDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Playlist baru") },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = { Text("Nama playlist") },
-                singleLine = true
+private fun AddSongsRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(PlayerIcons.Plus, contentDescription = null)
+        }
+        HSpace(14.dp)
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Tambah lagu", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Saran dari selera dengarmu",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onConfirm(name) },
-                enabled = name.isNotBlank()
-            ) { Text("Buat") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } }
-    )
+        }
+    }
 }

@@ -65,6 +65,20 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val _openingPlaylist = MutableStateFlow<String?>(null)
     val openingPlaylist: StateFlow<String?> = _openingPlaylist.asStateFlow()
 
+    /** Id rak beranda yang sudah disimpan ke Library pada sesi ini. */
+    private val _savedSections = MutableStateFlow<Set<String>>(emptySet())
+    val savedSections: StateFlow<Set<String>> = _savedSections.asStateFlow()
+
+    /** Menyimpan playlist rekomendasi ke Library sebagai playlist biasa. */
+    fun saveAsPlaylist(section: HomeSection) {
+        if (section.id in _savedSections.value || section.songs.isEmpty()) return
+        _savedSections.value = _savedSections.value + section.id
+        viewModelScope.launch {
+            val id = repository.createPlaylist(section.title)
+            repository.addToPlaylist(id, section.songs)
+        }
+    }
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 

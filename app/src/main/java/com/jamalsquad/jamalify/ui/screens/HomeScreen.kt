@@ -1,5 +1,15 @@
 package com.jamalsquad.jamalify.ui.screens
 
+import androidx.compose.material3.IconButton
+import androidx.compose.foundation.lazy.rememberLazyListState
+import com.jamalsquad.jamalify.ui.components.PlaylistAction
+import com.jamalsquad.jamalify.ui.viewmodel.FAVORITES_PLAYLIST_ID
+import com.jamalsquad.jamalify.ui.components.PetRoam
+import com.jamalsquad.jamalify.ui.components.PetKind
+import com.jamalsquad.jamalify.ui.components.PetManager
+import androidx.activity.compose.BackHandler
+import com.jamalsquad.jamalify.ui.components.PlayerIcons
+import com.jamalsquad.jamalify.ui.components.PlaylistDetail
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -70,7 +80,6 @@ import com.jamalsquad.jamalify.ui.viewmodel.HomeSection
 import com.jamalsquad.jamalify.ui.viewmodel.HomeViewModel
 import java.util.Calendar
 
-private val SpotifyGreen = Color(0xFF1DB954)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @UnstableApi
@@ -80,6 +89,8 @@ fun HomeScreen(
     onPlay: (List<Song>, Int) -> Unit,
     sheet: SongSheetController,
     contentPadding: PaddingValues,
+    onOpenSettings: () -> Unit,
+    onOpenPlaylist: (Long) -> Unit,
     viewModel: HomeViewModel = viewModel()
 ) {
     val trending by viewModel.trending.collectAsState()
@@ -104,386 +115,424 @@ fun HomeScreen(
     val historyCount by viewModel.historyCount.collectAsState()
     val topArtistRecap by viewModel.topArtist.collectAsState()
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = contentPadding
-    ) {
-        // Spotify Greeting & Filter Pills
-        item {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
-                Text(
-                    text = greeting(),
-                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+    val listState = rememberLazyListState()
+    val savedSections by viewModel.savedSections.collectAsState()
+    val isPlaying by player.isPlaying.collectAsState()
+
+    // Playlist dibuka sebagai halaman penuh, bukan sheet, seperti desain
+    // acuan. Daftar beranda tetap diingat posisinya lewat [listState].
+    activeExploreSection?.let { section ->
+        BackHandler { activeExploreSection = null }
+        LaunchedEffect(section.id) { player.warmUp(section.songs) }
+        PlaylistDetail(
+            title = section.title,
+            meta = "Playlist • ${section.songs.size} lagu",
+            subtitle = section.subtitle,
+            artworkUrl = section.songs.firstOrNull()?.thumbnail,
+            songs = section.songs,
+            currentSongId = currentSongId,
+            onBack = { activeExploreSection = null },
+            onPlay = onPlay,
+            onShuffle = { onPlay(section.songs.shuffled(), 0) },
+            onMore = sheet::show,
+            contentPadding = contentPadding,
+            actions = {
+                val saved = section.id in savedSections
+                PlaylistAction(
+                    icon = if (saved) PlayerIcons.Check else PlayerIcons.SaveToLibrary,
+                    contentDescription = if (saved) "Tersimpan di Library" else "Simpan ke Library",
+                    onClick = {
+                        if (!saved) {
+                            viewModel.saveAsPlaylist(section)
+                            Toast.makeText(context, "Disimpan ke Library", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    tint = if (saved) MaterialTheme.colorScheme.onSurface else Color.Unspecified
                 )
-                VSpace(12.dp)
-                // Filter Pills Row
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    val filters = listOf("Semua", "Musik", "Mix Harian", "Favorit")
-                    items(filters) { filter ->
-                        val isSelected = filter == selectedFilter
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (isSelected) SpotifyGreen else MaterialTheme.colorScheme.surfaceContainerHigh,
-                            modifier = Modifier.clickable { selectedFilter = filter }
-                        ) {
-                            Text(
-                                text = filter,
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
+            }
+        )
+        return
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding
+        ) {
+            // Spotify Greeting & Filter Pills
+            item {
+                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = greeting(),
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(PlayerIcons.Settings, contentDescription = "Pengaturan")
                         }
                     }
-                }
-            }
-        }
-
-        // Playlist personal: lagu yang didengar dikelompokkan menurut selera
-        if ((selectedFilter == "Semua" || selectedFilter == "Musik") && personalPlaylists.isNotEmpty()) {
-            item(key = "personal_playlists") {
-                Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
-                    Text(
-                        text = "Playlist untukmu",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        personalPlaylists.take(MAX_PLAYLIST_TILES).chunked(2).forEach { rowItems ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    VSpace(12.dp)
+                    // Filter Pills Row
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val filters = listOf("Semua", "Musik", "Mix Harian", "Favorit")
+                        items(filters) { filter ->
+                            val isSelected = filter == selectedFilter
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                modifier = Modifier.clickable { selectedFilter = filter }
                             ) {
-                                rowItems.forEach { playlist ->
-                                    PlaylistTile(
-                                        playlist = playlist,
-                                        isPlaying = playlist.songs.any { it.id == currentSongId },
-                                        onClick = {
-                                            activeExploreSection = HomeSection(
-                                                id = playlist.id,
-                                                title = playlist.title,
-                                                songs = playlist.songs,
-                                                subtitle = playlist.subtitle
-                                            )
-                                        },
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-                                if (rowItems.size == 1) {
-                                    Box(modifier = Modifier.weight(1f))
-                                }
+                                Text(
+                                    text = filter,
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Playlist YouTube yang cocok dengan artis yang paling sering didengar
-        if ((selectedFilter == "Semua" || selectedFilter == "Musik") && suggestedPlaylists.isNotEmpty()) {
-            item(key = "suggested_playlists") {
-                Column(modifier = Modifier.padding(bottom = 12.dp)) {
-                    SectionHeader("Playlist yang cocok dengan seleramu")
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        items(suggestedPlaylists, key = { it.url }) { playlist ->
-                            SuggestedPlaylistCard(
-                                playlist = playlist,
-                                loading = openingPlaylist == playlist.url,
-                                onClick = {
-                                    viewModel.openPlaylist(playlist) { section ->
-                                        if (section != null) {
-                                            activeExploreSection = section
-                                        } else {
-                                            Toast.makeText(context, "Playlist gagal dimuat", Toast.LENGTH_SHORT).show()
-                                        }
+            // Playlist personal: lagu yang didengar dikelompokkan menurut selera
+            if ((selectedFilter == "Semua" || selectedFilter == "Musik") && personalPlaylists.isNotEmpty()) {
+                item(key = "personal_playlists") {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
+                        Text(
+                            text = "Playlist untukmu",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            personalPlaylists.take(MAX_PLAYLIST_TILES).chunked(2).forEach { rowItems ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    rowItems.forEach { playlist ->
+                                        PlaylistTile(
+                                            playlist = playlist,
+                                            isPlaying = playlist.songs.any { it.id == currentSongId },
+                                            onClick = {
+                                                if (playlist.id == "liked") {
+                                                    onOpenPlaylist(FAVORITES_PLAYLIST_ID)
+                                                    return@PlaylistTile
+                                                }
+                                                activeExploreSection = HomeSection(
+                                                    id = playlist.id,
+                                                    title = playlist.title,
+                                                    songs = playlist.songs,
+                                                    subtitle = playlist.subtitle
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                    if (rowItems.size == 1) {
+                                        Box(modifier = Modifier.weight(1f))
                                     }
                                 }
-                            )
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // Daily Mix Section (Spotify Mix Harian Cards)
-        if (selectedFilter == "Semua" || selectedFilter == "Mix Harian") {
-            item {
-                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    SectionHeader("Dibuat Untukmu — Mix Harian") {
-                        TextButton(onClick = {
-                            activeExploreSection = HomeSection(
-                                id = "daily_mixes",
-                                title = "Mix Harian Untukmu",
-                                songs = dailyMixes.flatMap { it.songs }.distinctBy { it.id }
-                                    .ifEmpty { (trending + recent).distinctBy { it.id } }
-                            )
-                        }) {
-                            Text("Lihat semua", color = SpotifyGreen)
-                        }
-                    }
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        if (dailyMixes.isNotEmpty()) {
-                            itemsIndexed(dailyMixes, key = { _, mix -> mix.id }) { index, mix ->
-                                DailyMixCard(
-                                    mixNumber = index + 1,
-                                    subtitle = mix.songs.map { it.artist }.distinct().take(3).joinToString(", "),
-                                    gradient = MIX_GRADIENTS[index % MIX_GRADIENTS.size],
-                                    onClick = { onPlay(mix.songs, 0) }
-                                )
-                            }
-                        } else {
-                            // Belum ada riwayat untuk dijadikan acuan.
-                            item {
-                                DailyMixCard(
-                                    mixNumber = 1,
-                                    subtitle = "Pop Indonesia & Akustik",
-                                    gradient = MIX_GRADIENTS[0],
-                                    onClick = { onPlay(trending, 0) }
-                                )
-                            }
-                            item {
-                                DailyMixCard(
-                                    mixNumber = 2,
-                                    subtitle = "Indie & Hits Terbaru",
-                                    gradient = MIX_GRADIENTS[1],
-                                    onClick = { onPlay(trending.drop(10), 0) }
+            // Playlist YouTube yang cocok dengan artis yang paling sering didengar
+            if ((selectedFilter == "Semua" || selectedFilter == "Musik") && suggestedPlaylists.isNotEmpty()) {
+                item(key = "suggested_playlists") {
+                    Column(modifier = Modifier.padding(bottom = 12.dp)) {
+                        SectionHeader("Playlist yang cocok dengan seleramu")
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            items(suggestedPlaylists, key = { it.url }) { playlist ->
+                                SuggestedPlaylistCard(
+                                    playlist = playlist,
+                                    loading = openingPlaylist == playlist.url,
+                                    onClick = {
+                                        viewModel.openPlaylist(playlist) { section ->
+                                            if (section != null) {
+                                                activeExploreSection = section
+                                            } else {
+                                                Toast.makeText(context, "Playlist gagal dimuat", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
                                 )
                             }
                         }
                     }
                 }
-                VSpace(12.dp)
             }
-        }
 
-        // AI Mood Stations Section — lagu diambil langsung dari YouTube Music search, bukan filter lokal
-        if (selectedFilter == "Semua" || selectedFilter == "Musik") {
-            item {
-                Column(modifier = Modifier.padding(vertical = 8.dp)) {
-                    SectionHeader("Stasiun Radio Suasana Hati")
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        item {
-                            MoodStationCard(
-                                title = "Fokus & Koding",
-                                subtitle = "Lofi & Deep Beats",
-                                emoji = "🎧",
-                                gradientColors = listOf(Color(0xFF2C3E50), Color(0xFF000000)),
-                                onClick = { viewModel.moodSearch("lofi beats study chill instrumental") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
-                            )
-                        }
-                        item {
-                            MoodStationCard(
-                                title = "Hujan & Santai",
-                                subtitle = "Indie Folk & Akustik",
-                                emoji = "🌧️",
-                                gradientColors = listOf(Color(0xFF3A6073), Color(0xFF16222A)),
-                                onClick = { viewModel.moodSearch("lagu akustik santai indie folk indonesia") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
-                            )
-                        }
-                        item {
-                            MoodStationCard(
-                                title = "Workout Enerjik",
-                                subtitle = "EDM & Upbeat Hits",
-                                emoji = "⚡",
-                                gradientColors = listOf(Color(0xFFFF416C), Color(0xFFFF4B2B)),
-                                onClick = { viewModel.moodSearch("workout music EDM upbeat gym motivation") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
-                            )
-                        }
-                        item {
-                            MoodStationCard(
-                                title = "Senja & Chill",
-                                subtitle = "Acoustic Pop & Jazz",
-                                emoji = "☕",
-                                gradientColors = listOf(Color(0xFFF7971E), Color(0xFFFFD200)),
-                                onClick = { viewModel.moodSearch("acoustic pop jazz senja chill vibes") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
-                            )
-                        }
-                        item {
-                            MoodStationCard(
-                                title = "Semangat Pagi",
-                                subtitle = "Pop Ceria & Hits",
-                                emoji = "☀️",
-                                gradientColors = listOf(Color(0xFF11998E), Color(0xFF38EF7D)),
-                                onClick = { viewModel.moodSearch("lagu semangat pagi pop ceria hits indonesia") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
-                            )
-                        }
-                    }
-                }
-                VSpace(12.dp)
-            }
-        }
-
-        // Jamalify Recap / Wrapped Card — statistik diambil dari database riwayat, bukan ukuran list
-        if (historyCount > 0 || recent.isNotEmpty() || favorites.isNotEmpty()) {
-            item {
-                Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable {
+            // Daily Mix Section (Spotify Mix Harian Cards)
+            if (selectedFilter == "Semua" || selectedFilter == "Mix Harian") {
+                item {
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        SectionHeader("Dibuat Untukmu — Mix Harian") {
+                            TextButton(onClick = {
                                 activeExploreSection = HomeSection(
-                                    id = "wrapped_recap",
-                                    title = "Rekap Selera Musikmu 📊",
-                                    songs = (favorites + recent).distinctBy { it.id }
+                                    id = "daily_mixes",
+                                    title = "Mix Harian Untukmu",
+                                    songs = dailyMixes.flatMap { it.songs }.distinctBy { it.id }
+                                        .ifEmpty { (trending + recent).distinctBy { it.id } }
                                 )
-                            },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.Transparent)
-                    ) {
-                        Box(
+                            }) {
+                                Text("Lihat semua", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            if (dailyMixes.isNotEmpty()) {
+                                itemsIndexed(dailyMixes, key = { _, mix -> mix.id }) { index, mix ->
+                                    DailyMixCard(
+                                        mixNumber = index + 1,
+                                        subtitle = mix.songs.map { it.artist }.distinct().take(3).joinToString(", "),
+                                        gradient = MIX_GRADIENTS[index % MIX_GRADIENTS.size],
+                                        onClick = { onPlay(mix.songs, 0) }
+                                    )
+                                }
+                            } else {
+                                // Belum ada riwayat untuk dijadikan acuan.
+                                item {
+                                    DailyMixCard(
+                                        mixNumber = 1,
+                                        subtitle = "Pop Indonesia & Akustik",
+                                        gradient = MIX_GRADIENTS[0],
+                                        onClick = { onPlay(trending, 0) }
+                                    )
+                                }
+                                item {
+                                    DailyMixCard(
+                                        mixNumber = 2,
+                                        subtitle = "Indie & Hits Terbaru",
+                                        gradient = MIX_GRADIENTS[1],
+                                        onClick = { onPlay(trending.drop(10), 0) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    VSpace(12.dp)
+                }
+            }
+
+            // AI Mood Stations Section — lagu diambil langsung dari YouTube Music search, bukan filter lokal
+            if (selectedFilter == "Semua" || selectedFilter == "Musik") {
+                item {
+                    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                        SectionHeader("Stasiun Radio Suasana Hati")
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 20.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            item {
+                                MoodStationCard(
+                                    title = "Fokus & Koding",
+                                    subtitle = "Lofi & Deep Beats",
+                                    onClick = { viewModel.moodSearch("lofi beats study chill instrumental") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
+                                )
+                            }
+                            item {
+                                MoodStationCard(
+                                    title = "Hujan & Santai",
+                                    subtitle = "Indie Folk & Akustik",
+                                    onClick = { viewModel.moodSearch("lagu akustik santai indie folk indonesia") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
+                                )
+                            }
+                            item {
+                                MoodStationCard(
+                                    title = "Workout Enerjik",
+                                    subtitle = "EDM & Upbeat Hits",
+                                    onClick = { viewModel.moodSearch("workout music EDM upbeat gym motivation") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
+                                )
+                            }
+                            item {
+                                MoodStationCard(
+                                    title = "Senja & Chill",
+                                    subtitle = "Acoustic Pop & Jazz",
+                                    onClick = { viewModel.moodSearch("acoustic pop jazz senja chill vibes") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
+                                )
+                            }
+                            item {
+                                MoodStationCard(
+                                    title = "Semangat Pagi",
+                                    subtitle = "Pop Ceria & Hits",
+                                    onClick = { viewModel.moodSearch("lagu semangat pagi pop ceria hits indonesia") { songs -> if (songs.isNotEmpty()) onPlay(songs, 0) } }
+                                )
+                            }
+                        }
+                    }
+                    VSpace(12.dp)
+                }
+            }
+
+            // Jamalify Recap / Wrapped Card — statistik diambil dari database riwayat, bukan ukuran list
+            if (historyCount > 0 || recent.isNotEmpty() || favorites.isNotEmpty()) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF8E2DE2), Color(0xFF4A00E0))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .clickable {
+                                    activeExploreSection = HomeSection(
+                                        id = "wrapped_recap",
+                                        title = "Rekap Selera Musikmu 📊",
+                                        songs = (favorites + recent).distinctBy { it.id }
                                     )
-                                )
-                                .padding(16.dp)
+                                },
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Jamalify Recap — Selera Musik 📊",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = Color.White
-                                    )
-                                    VSpace(4.dp)
-                                    val displayArtist = topArtistRecap ?: (favorites + recent).firstOrNull()?.artist ?: "Artis Pilihan"
-                                    Text(
-                                        text = "$historyCount× Diputar • Artis Favorit: $displayArtist",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.85f)
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(Color.White.copy(alpha = 0.25f))
-                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(
-                                        text = "Lihat Rekap",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = Color.White
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Jamalify Recap — Selera Musik 📊",
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        VSpace(4.dp)
+                                        val displayArtist = topArtistRecap ?: (favorites + recent).firstOrNull()?.artist ?: "Artis Pilihan"
+                                        Text(
+                                            text = "$historyCount× Diputar • Artis Favorit: $displayArtist",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(MaterialTheme.colorScheme.primary)
+                                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Lihat Rekap",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                VSpace(12.dp)
-            }
-        }
-
-        // Recent Listening Shelf
-        if ((selectedFilter == "Semua" || selectedFilter == "Favorit") && recent.isNotEmpty()) {
-            shelf(
-                section = HomeSection("recent", "Lanjutkan mendengarkan", recent),
-                onPlay = onPlay,
-                onExploreMore = { activeExploreSection = HomeSection("recent", "Lanjutkan mendengarkan", recent) }
-            )
-        }
-
-        // Favorite Quick Picks List
-        if ((selectedFilter == "Semua" || selectedFilter == "Favorit") && favorites.isNotEmpty()) {
-            item {
-                SectionHeader("Lagu Favoritmu") {
-                    Text(
-                        text = "${favorites.size} lagu",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    VSpace(12.dp)
                 }
             }
-            items(favorites, key = { "fav_${it.id}" }) { song ->
-                SongRow(
-                    song = song,
-                    isPlaying = song.id == currentSongId,
-                    onClick = { onPlay(favorites, favorites.indexOf(song)) },
-                    onMore = { sheet.show(song) }
-                )
-            }
-            item { VSpace(12.dp) }
-        }
 
-        // Category Sections (Pop, Indie, Dangdut, K-Pop, Focus)
-        if (selectedFilter == "Semua" || selectedFilter == "Musik") {
-            sections.forEach { section ->
+            // Recent Listening Shelf
+            if ((selectedFilter == "Semua" || selectedFilter == "Favorit") && recent.isNotEmpty()) {
                 shelf(
-                    section = section,
+                    section = HomeSection("recent", "Lanjutkan mendengarkan", recent),
                     onPlay = onPlay,
-                    onExploreMore = { activeExploreSection = section }
+                    onExploreMore = { activeExploreSection = HomeSection("recent", "Lanjutkan mendengarkan", recent) }
                 )
             }
-        }
 
-        // Trending Music Section
-        if (selectedFilter == "Semua" || selectedFilter == "Musik") {
-            item {
-                SectionHeader("Sedang tren & Populer") {
-                    TextButton(onClick = {
-                        activeExploreSection = HomeSection("trending_all", "Sedang tren & Populer", trending)
-                    }) {
-                        Text("Lihat semua", color = SpotifyGreen)
+            // Favorite Quick Picks List
+            if ((selectedFilter == "Semua" || selectedFilter == "Favorit") && favorites.isNotEmpty()) {
+                item {
+                    SectionHeader("Lagu Favoritmu") {
+                        Text(
+                            text = "${favorites.size} lagu",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-            }
-
-            if (loading && trending.isEmpty()) {
-                item { LoadingBox() }
-            } else if (trending.isEmpty()) {
-                item {
-                    EmptyState(
-                        title = "Beranda belum terisi",
-                        subtitle = error ?: "Coba muat ulang setelah koneksi tersedia.",
-                        action = { TextButton(onClick = viewModel::refresh) { Text("Coba lagi") } }
-                    )
-                }
-            } else {
-                itemsIndexed(trending, key = { _, song -> "trend_${song.id}" }) { index, song ->
+                items(favorites, key = { "fav_${it.id}" }) { song ->
                     SongRow(
                         song = song,
                         isPlaying = song.id == currentSongId,
-                        onClick = { onPlay(trending, index) },
-                        modifier = Modifier.animateItem(),
+                        onClick = { onPlay(favorites, favorites.indexOf(song)) },
                         onMore = { sheet.show(song) }
                     )
                 }
+                item { VSpace(12.dp) }
+            }
 
-                if (canLoadMore) {
+            // Category Sections (Pop, Indie, Dangdut, K-Pop, Focus)
+            if (selectedFilter == "Semua" || selectedFilter == "Musik") {
+                sections.forEach { section ->
+                    shelf(
+                        section = section,
+                        onPlay = onPlay,
+                        onExploreMore = { activeExploreSection = section }
+                    )
+                }
+            }
+
+            // Trending Music Section
+            if (selectedFilter == "Semua" || selectedFilter == "Musik") {
+                item {
+                    SectionHeader("Sedang tren & Populer") {
+                        TextButton(onClick = {
+                            activeExploreSection = HomeSection("trending_all", "Sedang tren & Populer", trending)
+                        }) {
+                            Text("Lihat semua", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                if (loading && trending.isEmpty()) {
+                    item { LoadingBox() }
+                } else if (trending.isEmpty()) {
                     item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            if (loadingMore) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp),
-                                    strokeWidth = 2.dp,
-                                    color = SpotifyGreen
-                                )
-                            } else {
-                                OutlinedButton(onClick = viewModel::loadMore) {
-                                    Text("Muat lebih banyak")
+                        EmptyState(
+                            title = "Beranda belum terisi",
+                            subtitle = error ?: "Coba muat ulang setelah koneksi tersedia.",
+                            action = { TextButton(onClick = viewModel::refresh) { Text("Coba lagi") } }
+                        )
+                    }
+                } else {
+                    itemsIndexed(trending, key = { _, song -> "trend_${song.id}" }) { index, song ->
+                        SongRow(
+                            song = song,
+                            isPlaying = song.id == currentSongId,
+                            onClick = { onPlay(trending, index) },
+                            modifier = Modifier.animateItem(),
+                            onMore = { sheet.show(song) }
+                        )
+                    }
+
+                    if (canLoadMore) {
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (loadingMore) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    OutlinedButton(onClick = viewModel::loadMore) {
+                                        Text("Muat lebih banyak")
+                                    }
                                 }
                             }
                         }
@@ -491,20 +540,25 @@ fun HomeScreen(
                 }
             }
         }
-    }
 
-    // Category Detail Sheet ("Jelajahi Lebih Lanjut")
-    activeExploreSection?.let { section ->
-        LaunchedEffect(section.id) { player.warmUp(section.songs) }
-        CategoryDetailSheet(
-            section = section,
-            currentSongId = currentSongId,
-            onDismiss = { activeExploreSection = null },
-            onPlay = { list, idx ->
-                onPlay(list, idx)
-                activeExploreSection = null
-            },
-            onMore = sheet::show
+        // Peliharaan gentayangan di atas beranda, di dalam area aman
+        // antara status bar dan mini player.
+        val pet by PetManager.kind.collectAsState()
+        val song by player.currentSong.collectAsState()
+        if (pet != PetKind.NONE) PetRoam(
+            isPlaying = isPlaying,
+            kind = pet,
+            songTitle = song?.title,
+            // Karakter chibi berkepala besar, jadi digambar sedikit lebih besar.
+            size = if (pet == PetKind.CAT) 52.dp else 64.dp,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    top = contentPadding.calculateTopPadding() + 8.dp,
+                    bottom = contentPadding.calculateBottomPadding(),
+                    start = 8.dp,
+                    end = 8.dp
+                )
         )
     }
 }
@@ -521,7 +575,7 @@ private fun PlaylistTile(
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = modifier.height(56.dp)
     ) {
@@ -532,10 +586,10 @@ private fun PlaylistTile(
                 Box(
                     modifier = Modifier
                         .size(56.dp)
-                        .background(Brush.linearGradient(listOf(Color(0xFF450AF5), Color(0xFFC4EFD9)))),
+                        .background(MaterialTheme.colorScheme.primary),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = Color.White)
+                    Icon(PlayerIcons.HeartFilled, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
                 }
             } else {
                 Artwork(url = playlist.songs.firstOrNull()?.thumbnail, size = 56.dp, corner = 0.dp)
@@ -546,7 +600,7 @@ private fun PlaylistTile(
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                color = if (isPlaying) SpotifyGreen else MaterialTheme.colorScheme.onSurface,
+                color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp)
@@ -579,7 +633,7 @@ private fun SuggestedPlaylistCard(
                         .background(Color.Black.copy(alpha = 0.5f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = SpotifyGreen, modifier = Modifier.size(32.dp))
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 }
             }
         }
@@ -603,10 +657,12 @@ private fun SuggestedPlaylistCard(
 }
 
 /** Spotify Dual-Tone Daily Mix Card */
+// Monokrom, senada dengan palet aplikasi: gelap di kedua tema supaya teks
+// putih di atasnya selalu terbaca.
 private val MIX_GRADIENTS = listOf(
-    listOf(Color(0xFF1E3264), Color(0xFFA0C3D2)),
-    listOf(Color(0xFF8D0034), Color(0xFFFFC857)),
-    listOf(Color(0xFF006450), Color(0xFF84DCC6))
+    listOf(Color(0xFF2B3345), Color(0xFF66708A)),
+    listOf(Color(0xFF1F2633), Color(0xFF465169)),
+    listOf(Color(0xFF363E52), Color(0xFF8A93A8))
 )
 
 @Composable
@@ -662,69 +718,6 @@ private fun DailyMixCard(
     }
 }
 
-/** Bottom Sheet untuk Jelajahi Lebih Lanjut / Lihat Semua Kategori */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CategoryDetailSheet(
-    section: HomeSection,
-    currentSongId: String?,
-    onDismiss: () -> Unit,
-    onPlay: (List<Song>, Int) -> Unit,
-    onMore: (Song) -> Unit
-) {
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.background,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-        ) {
-            Text(
-                text = section.title,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = section.subtitle ?: "${section.songs.size} lagu terkait & mirip",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (section.songs.isNotEmpty()) {
-                    FilledIconButton(
-                        onClick = { onPlay(section.songs, 0) },
-                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = SpotifyGreen),
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = "Putar semua", tint = Color.Black)
-                    }
-                }
-            }
-            VSpace(16.dp)
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(480.dp)
-            ) {
-                itemsIndexed(section.songs, key = { _, song -> "explore_${song.id}" }) { index, song ->
-                    SongRow(
-                        song = song,
-                        isPlaying = song.id == currentSongId,
-                        onClick = { onPlay(section.songs, index) },
-                        onMore = { onMore(song) }
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** Satu rak horizontal berisi kartu lagu. */
 private fun androidx.compose.foundation.lazy.LazyListScope.shelf(
     section: HomeSection,
@@ -734,7 +727,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.shelf(
     item(key = "header_${section.id}") {
         SectionHeader(section.title) {
             TextButton(onClick = onExploreMore) {
-                Text("Lihat semua", color = SpotifyGreen)
+                Text("Lihat semua", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -791,8 +784,6 @@ private fun greeting(): String =
 private fun MoodStationCard(
     title: String,
     subtitle: String,
-    emoji: String,
-    gradientColors: List<Color>,
     onClick: () -> Unit
 ) {
     Card(
@@ -806,26 +797,31 @@ private fun MoodStationCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Brush.linearGradient(gradientColors))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .padding(12.dp)
         ) {
             Column(
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(text = emoji, fontSize = 24.sp)
+                Icon(
+                    PlayerIcons.PlayCircle,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(26.dp)
+                )
                 Column {
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.8f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

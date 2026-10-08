@@ -31,6 +31,8 @@ class JamalifyApp : Application(), ImageLoaderFactory {
         repository = MusicRepository.get(this)
         // Sebelum antrean pertama dibuat: kualitas Hi-Res ikut tertulis di URI lagu.
         SoundModeManager.init(this)
+        com.jamalsquad.jamalify.ui.theme.ThemeManager.init(this)
+        com.jamalsquad.jamalify.ui.components.PetManager.init(this)
         playerConnection = PlayerConnection(this)
 
         // Inisialisasi ekstraktor di latar supaya tidak menahan layar pertama.

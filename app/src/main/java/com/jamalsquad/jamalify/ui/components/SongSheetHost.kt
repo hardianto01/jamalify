@@ -1,5 +1,6 @@
 package com.jamalsquad.jamalify.ui.components
 
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -45,7 +46,8 @@ fun SongSheetHost(
     viewModel: PlayerViewModel = viewModel()
 ) {
     val song = controller.song ?: return
-    val app = LocalContext.current.applicationContext as JamalifyApp
+    val context = LocalContext.current
+    val app = context.applicationContext as JamalifyApp
     val player = app.playerConnection
     val playlists by viewModel.playlists.collectAsState()
 
@@ -68,7 +70,15 @@ fun SongSheetHost(
                 player.play(song)
                 viewModel.startRadio(song)
             },
-            onAddToPlaylist = { playlistId -> viewModel.addToPlaylist(playlistId, song) },
+            onAddToPlaylist = { playlistId ->
+                viewModel.addToPlaylist(playlistId, song)
+                val name = playlists.firstOrNull { it.id == playlistId }?.name ?: "playlist"
+                Toast.makeText(context, "Ditambahkan ke $name", Toast.LENGTH_SHORT).show()
+            },
+            onCreatePlaylist = { name ->
+                viewModel.createPlaylistWith(name, song)
+                Toast.makeText(context, "Playlist \"$name\" dibuat", Toast.LENGTH_SHORT).show()
+            },
             onRemove = controller.onRemove
         ),
         onDismiss = { controller.dismiss() }

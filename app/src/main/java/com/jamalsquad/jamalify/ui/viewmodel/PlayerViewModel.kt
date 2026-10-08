@@ -66,6 +66,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { repository.addToPlaylist(playlistId, song) }
     }
 
+    fun createPlaylistWith(name: String, song: Song) {
+        viewModelScope.launch {
+            val id = repository.createPlaylist(name)
+            repository.addToPlaylist(id, song)
+        }
+    }
+
     fun download(song: Song) {
         viewModelScope.launch {
             repository.enqueueDownload(song)

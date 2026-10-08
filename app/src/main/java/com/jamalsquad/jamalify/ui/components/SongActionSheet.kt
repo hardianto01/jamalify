@@ -1,5 +1,6 @@
 package com.jamalsquad.jamalify.ui.components
 
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,8 @@ data class SongActions(
     val onDownload: () -> Unit,
     val onStartRadio: () -> Unit,
     val onAddToPlaylist: (Long) -> Unit,
+    /** Membuat playlist bernama ini lalu menambahkan lagunya ke sana. */
+    val onCreatePlaylist: (String) -> Unit,
     val onRemove: (() -> Unit)? = null
 )
 
@@ -59,6 +62,18 @@ fun SongActionSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showPlaylistPicker by remember { mutableStateOf(false) }
+    var showNewPlaylist by remember { mutableStateOf(false) }
+
+    if (showNewPlaylist) {
+        NewPlaylistDialog(
+            onDismiss = { showNewPlaylist = false },
+            onConfirm = { name ->
+                showNewPlaylist = false
+                actions.onCreatePlaylist(name)
+                onDismiss()
+            }
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -87,12 +102,8 @@ fun SongActionSheet(
         VSpace(4.dp)
 
         if (showPlaylistPicker) {
-            if (playlists.isEmpty()) {
-                EmptyState(
-                    title = "Belum ada playlist",
-                    subtitle = "Buat playlist dulu di tab Library."
-                )
-            } else {
+            SheetItem(Icons.Rounded.Add, "Playlist baru") { showNewPlaylist = true }
+            if (playlists.isNotEmpty()) {
                 LazyColumn {
                     items(playlists, key = { it.id }) { playlist ->
                         SheetItem(

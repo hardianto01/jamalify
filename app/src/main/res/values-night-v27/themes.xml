@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-        Aplikasi ini selalu gelap, jadi tema jendelanya pun gelap di kedua
-        varian. `forceDarkAllowed=false` penting: tanpa itu sebagian OEM
+        Varian malam: jendela gelap sebelum Compose menggambar, supaya tidak
+        ada kilatan putih saat aplikasi dibuka dalam mode gelap. `forceDarkAllowed=false` penting: tanpa itu sebagian OEM
         (MIUI/HyperOS, One UI) menerapkan pembalikan warna otomatis di atas
         tema kita sendiri, dan hasilnya justru teks gelap di atas latar gelap.
     -->

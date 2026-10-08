@@ -1,5 +1,37 @@
 package com.jamalsquad.jamalify.ui.screens
 
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import com.jamalsquad.jamalify.ui.components.PlayerIcons
+import android.os.Build
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.snap
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.jamalsquad.jamalify.ui.components.GlassIconButton
+import com.jamalsquad.jamalify.ui.components.glow
+import com.jamalsquad.jamalify.ui.components.liquidGlass
+import com.jamalsquad.jamalify.util.Thumbnails
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import kotlin.math.PI
+import kotlin.math.sin
+import kotlin.random.Random
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
@@ -19,6 +51,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -88,6 +121,9 @@ import com.jamalsquad.jamalify.playback.PlayerConnection
 import com.jamalsquad.jamalify.playback.SoundMode
 import com.jamalsquad.jamalify.playback.SoundModeManager
 import com.jamalsquad.jamalify.ui.components.Artwork
+import com.jamalsquad.jamalify.ui.components.PetKind
+import com.jamalsquad.jamalify.ui.components.PetManager
+import com.jamalsquad.jamalify.ui.components.PetPerch
 import com.jamalsquad.jamalify.ui.components.AudioVisualizer
 import com.jamalsquad.jamalify.ui.components.EmptyState
 import com.jamalsquad.jamalify.ui.components.HSpace
@@ -97,7 +133,6 @@ import com.jamalsquad.jamalify.ui.components.QueueSongRow
 import com.jamalsquad.jamalify.ui.components.SoundModeSheet
 import com.jamalsquad.jamalify.ui.components.SongRow
 import com.jamalsquad.jamalify.ui.components.VSpace
-import com.jamalsquad.jamalify.ui.theme.rememberAmbientColors
 import com.jamalsquad.jamalify.ui.viewmodel.PlayerViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -151,28 +186,19 @@ fun PlayerScreen(
     }
 
     val current = song!!
-    val ambient = rememberAmbientColors(current.thumbnail)
-    val animatedTopColor by androidx.compose.animation.animateColorAsState(targetValue = ambient.topColor, animationSpec = tween(700), label = "topColor")
-    val animatedCenterColor by androidx.compose.animation.animateColorAsState(targetValue = ambient.centerColor, animationSpec = tween(700), label = "centerColor")
-    val animatedAccentColor by androidx.compose.animation.animateColorAsState(targetValue = ambient.accentColor, animationSpec = tween(700), label = "accentColor")
+    // Monokrom: yang aktif putih, sisanya abu-abu redup.
+    val animatedAccentColor = MaterialTheme.colorScheme.onBackground
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    var showMore by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        animatedTopColor,
-                        animatedCenterColor,
-                        MaterialTheme.colorScheme.background
-                    )
-                )
-            )
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp)
         ) {
             Row(
@@ -183,13 +209,12 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 IconButton(onClick = onCollapse) {
-                    Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = "Tutup pemutar")
+                    Icon(PlayerIcons.ChevronDown, contentDescription = "Tutup pemutar")
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Sedang diputar",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Sedang Diputar",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                     )
                     if (sleepTimerRemaining != null || isEndOfSongTimer) {
                         val timerText = if (isEndOfSongTimer) "Timer: Akhir Lagu"
@@ -197,48 +222,50 @@ fun PlayerScreen(
                         Text(
                             text = timerText,
                             style = MaterialTheme.typography.labelMedium,
-                            color = animatedAccentColor
+                            color = muted
                         )
                     }
                 }
                 IconButton(onClick = { showQueue = true }) {
-                    Icon(Icons.Rounded.QueueMusic, contentDescription = "Antrean")
+                    Icon(PlayerIcons.Queue, contentDescription = "Antrean")
                 }
             }
 
-            VSpace(16.dp)
+            VSpace(12.dp)
 
-            // Spotify Inline Lyrics vs Artwork Crossfade Box
-            Box(
-                modifier = Modifier.fillMaxWidth(),
+            // Sampul mengisi sisa tinggi layar, jadi kontrol selalu turun
+            // mendekati bottom bar alih-alih menyisakan celah kosong.
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center
             ) {
+                val artSize = minOf(maxWidth, maxHeight, 340.dp)
                 Crossfade(
                     targetState = showLyrics,
                     animationSpec = tween(durationMillis = 300),
                     label = "artwork_lyrics_swap"
                 ) { isLyrics ->
                     if (!isLyrics) {
-                        Box(contentAlignment = Alignment.Center) {
-                            val artScale by animateFloatAsState(
-                                targetValue = if (isPlaying) 1f else 0.93f,
-                                animationSpec = tween(300),
-                                label = "artwork_scale"
-                            )
-                            Artwork(
-                                url = current.thumbnail,
-                                size = 300.dp,
-                                corner = 16.dp,
-                                modifier = Modifier.graphicsLayer {
+                        val artScale by animateFloatAsState(
+                            targetValue = if (isPlaying) 1f else 0.9f,
+                            animationSpec = tween(300),
+                            label = "artwork_scale"
+                        )
+                        Artwork(
+                            url = current.thumbnail,
+                            size = artSize,
+                            corner = 28.dp,
+                            modifier = Modifier
+                                .graphicsLayer {
                                     scaleX = artScale
                                     scaleY = artScale
                                 }
-                            )
-                        }
+                                .glow(alpha = 0.3f, spread = 0.9f)
+                        )
                     } else {
                         InlineLyricsCard(
-                            size = 300.dp,
-                            corner = 16.dp,
+                            size = artSize,
+                            corner = 28.dp,
                             songTitle = current.title,
                             artistName = current.artist,
                             durationSec = current.durationSec.toInt(),
@@ -248,175 +275,145 @@ fun PlayerScreen(
                         )
                     }
                 }
+                // Peliharaan beranda ikut nongkrong di pojok sampul, sedikit menyembul.
+                val pet by PetManager.kind.collectAsState()
+                if (pet != PetKind.NONE && !showLyrics) PetPerch(
+                    isPlaying = isPlaying,
+                    kind = pet,
+                    size = if (pet == PetKind.CAT) 48.dp else 58.dp,
+                    songTitle = current.title,
+                    modifier = Modifier
+                        .size(artSize)
+                        .offset(x = 12.dp, y = 16.dp)
+                )
             }
 
             VSpace(24.dp)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                IconButton(onClick = { viewModel.toggleFavorite(current) }) {
+                    Icon(
+                        imageVector = if (isFavorite) PlayerIcons.HeartFilled else PlayerIcons.Heart,
+                        contentDescription = "Favorit",
+                        tint = if (isFavorite) animatedAccentColor else muted
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Text(
                         text = current.title,
                         style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = current.artist,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Normal),
+                        color = muted,
+                        textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(onClick = { viewModel.toggleFavorite(current) }) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = "Favorit",
-                        tint = if (isFavorite) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                // Alat tambahan disimpan di balik "⋯", seperti desain acuan:
+                // layar utama hanya berisi sampul, judul, dan kontrol putar.
+                Box {
+                    IconButton(onClick = { showMore = true }) {
+                        Icon(PlayerIcons.More, contentDescription = "Lainnya", tint = muted)
+                    }
+                    DropdownMenu(expanded = showMore, onDismissRequest = { showMore = false }) {
+                        MoreItem(
+                            label = if (downloadState == DownloadState.COMPLETED) "Sudah diunduh" else "Unduh",
+                            icon = if (downloadState == DownloadState.COMPLETED) Icons.Rounded.DownloadDone else Icons.Rounded.Download,
+                            active = downloadState == DownloadState.RUNNING || downloadState == DownloadState.QUEUED
+                        ) { showMore = false; viewModel.download() }
+                        MoreItem("Lirik", Icons.Rounded.Lyrics, showLyrics) { showMore = false; showLyrics = !showLyrics }
+                        MoreItem("Karaoke", Icons.Rounded.MusicNote, karaokeMode) { showMore = false; player.karaokeMode.toggleKaraoke() }
+                        MoreItem("Mode suara", Icons.Rounded.GraphicEq, soundMode != SoundMode.NORMAL) { showMore = false; showSoundMode = true }
+                        MoreItem("Sleep timer", Icons.Rounded.Bedtime, sleepTimerRemaining != null || isEndOfSongTimer) { showMore = false; showSleepTimer = true }
+                        MoreItem("Equalizer", Icons.Rounded.Tune, false) { showMore = false; player.openEqualizer(context) }
+                    }
                 }
             }
 
-            VSpace(16.dp)
+            VSpace(20.dp)
 
-            PlaybackProgress(
-                player = player,
-                accentColor = animatedAccentColor
-            )
+            WaveformProgress(player = player, seed = current.id)
 
             VSpace(16.dp)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 IconButton(onClick = player::toggleShuffle) {
                     Icon(
-                        imageVector = Icons.Rounded.Shuffle,
+                        imageVector = PlayerIcons.Shuffle,
                         contentDescription = "Acak",
-                        tint = if (shuffle) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (shuffle) animatedAccentColor else muted
                     )
                 }
                 IconButton(onClick = player::previous) {
                     Icon(
-                        imageVector = Icons.Rounded.SkipPrevious,
+                        imageVector = PlayerIcons.SkipPrevious,
                         contentDescription = "Sebelumnya",
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
-                IconButton(
-                    onClick = player::togglePlayPause,
+                Box(
                     modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(32.dp))
-                        .background(animatedAccentColor)
+                        .size(68.dp)
+                        .glow(alpha = 0.3f, spread = 1.1f)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                        .clickable(onClick = player::togglePlayPause),
+                    contentAlignment = Alignment.Center
                 ) {
                     if (isBuffering) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(28.dp),
-                            color = Color.Black,
+                            color = MaterialTheme.colorScheme.onPrimary,
                             strokeWidth = 3.dp
                         )
                     } else {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                            imageVector = if (isPlaying) PlayerIcons.Pause else PlayerIcons.Play,
                             contentDescription = if (isPlaying) "Jeda" else "Putar",
-                            tint = Color.Black,
-                            modifier = Modifier.size(36.dp)
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
                 IconButton(onClick = player::next) {
                     Icon(
-                        imageVector = Icons.Rounded.SkipNext,
+                        imageVector = PlayerIcons.SkipNext,
                         contentDescription = "Berikutnya",
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
                 IconButton(onClick = player::cycleRepeatMode) {
                     Icon(
-                        imageVector = if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                        imageVector = if (repeatMode == Player.REPEAT_MODE_ONE) PlayerIcons.RepeatOne else PlayerIcons.Repeat,
                         contentDescription = "Ulang",
-                        tint = if (repeatMode != Player.REPEAT_MODE_OFF) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            VSpace(20.dp)
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = { player.karaokeMode.toggleKaraoke() }) {
-                    Icon(
-                        imageVector = Icons.Rounded.MusicNote,
-                        contentDescription = "Karaoke",
-                        tint = if (karaokeMode) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { showSoundMode = true }) {
-                    Icon(
-                        imageVector = Icons.Rounded.GraphicEq,
-                        contentDescription = "Mode Suara",
-                        tint = if (soundMode != SoundMode.NORMAL) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = viewModel::toggleFavorite) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        contentDescription = "Favorit",
-                        tint = if (isFavorite) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = viewModel::download) {
-                    val icon = when (downloadState) {
-                        DownloadState.COMPLETED -> Icons.Rounded.DownloadDone
-                        else -> Icons.Rounded.Download
-                    }
-                    val tint = when (downloadState) {
-                        DownloadState.COMPLETED, DownloadState.RUNNING, DownloadState.QUEUED -> animatedAccentColor
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    Icon(imageVector = icon, contentDescription = "Unduh", tint = tint)
-                }
-                IconButton(onClick = { showSleepTimer = true }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Bedtime,
-                        contentDescription = "Sleep Timer",
-                        tint = if (sleepTimerRemaining != null || isEndOfSongTimer) animatedAccentColor
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { player.openEqualizer(context) }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Tune,
-                        contentDescription = "Equalizer",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = { showLyrics = !showLyrics }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Lyrics,
-                        contentDescription = "Lirik Lagu",
-                        tint = if (showLyrics) animatedAccentColor else MaterialTheme.colorScheme.onSurfaceVariant
+                        tint = if (repeatMode != Player.REPEAT_MODE_OFF) animatedAccentColor else muted
                     )
                 }
             }
 
             if (soundMode != SoundMode.NORMAL) {
-                VSpace(8.dp)
+                VSpace(20.dp)
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterHorizontally)
                         .clip(RoundedCornerShape(50))
-                        .background(animatedAccentColor.copy(alpha = 0.15f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { showSoundMode = true }
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                 ) {
@@ -425,12 +422,12 @@ fun PlayerScreen(
                     } else {
                         Text(
                             text = "${soundMode.emoji} ${soundMode.label}",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = animatedAccentColor
+                            style = MaterialTheme.typography.labelLarge
                         )
                     }
                 }
             }
+            VSpace(24.dp)
         }
     }
 
@@ -640,19 +637,19 @@ private fun InlineLyricsCard(
                     Icon(
                         imageVector = Icons.Rounded.Lyrics,
                         contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.5f),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(36.dp)
                     )
                     VSpace(8.dp)
                     Text(
                         "Lirik belum tersedia",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         "Ketuk untuk kembali ke cover album",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             } else {
@@ -666,7 +663,7 @@ private fun InlineLyricsCard(
                         Text(
                             text = lyrics.plainLyrics,
                             style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp, fontWeight = FontWeight.SemiBold),
-                            color = Color.White
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 } else if (lyrics.syncedLines.isNotEmpty()) {
@@ -697,7 +694,7 @@ private fun InlineLyricsCard(
                                     fontSize = 14.sp
                                 ),
                                 color = if (isActive) accentColor
-                                else Color.White.copy(alpha = 0.55f),
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
                         }
@@ -708,35 +705,83 @@ private fun InlineLyricsCard(
     }
 }
 
-/** Slider dan waktu putar; satu-satunya bagian yang disusun ulang tiap posisi berubah. */
+@Composable
+private fun MoreItem(label: String, icon: ImageVector, active: Boolean, onClick: () -> Unit) {
+    val tint = if (active) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+    DropdownMenuItem(
+        text = {
+            Text(label, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+        },
+        leadingIcon = { Icon(icon, contentDescription = null, tint = tint) },
+        onClick = onClick
+    )
+}
+
+/**
+ * Seekbar berbentuk gelombang suara. Bentuknya bukan analisis audio sungguhan
+ * — itu butuh mengunduh seluruh berkas — melainkan pola acak yang ditentukan
+ * ID lagu, jadi tiap lagu punya bentuk sendiri dan selalu sama.
+ *
+ * Satu-satunya bagian yang disusun ulang tiap posisi berubah.
+ */
 @UnstableApi
 @Composable
-private fun PlaybackProgress(
-    player: PlayerConnection,
-    accentColor: Color
-) {
+private fun WaveformProgress(player: PlayerConnection, seed: String) {
     val position by player.position.collectAsState()
     val duration by player.duration.collectAsState()
     var scrubValue by remember { mutableStateOf<Float?>(null) }
+    val currentDuration by rememberUpdatedState(duration)
+    val bars = remember(seed) { waveformBars(seed) }
 
-    val currentProgress = scrubValue ?: (if (duration > 0) position.toFloat() / duration else 0f)
-
-    Slider(
-        value = currentProgress.coerceIn(0f, 1f),
-        onValueChange = { scrubValue = it },
-        onValueChangeFinished = {
-            val targetMs = ((scrubValue ?: 0f) * duration).toLong()
-            player.seekTo(targetMs)
-            scrubValue = null
-        },
-        colors = SliderDefaults.colors(
-            thumbColor = accentColor,
-            activeTrackColor = accentColor,
-            inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-        ),
-        modifier = Modifier.fillMaxWidth()
+    val target = (scrubValue ?: if (duration > 0) position.toFloat() / duration else 0f).coerceIn(0f, 1f)
+    // Posisi datang tiap 500ms; dianimasikan supaya isian mengalir, bukan melompat.
+    val progress by animateFloatAsState(
+        targetValue = target,
+        animationSpec = if (scrubValue != null) snap() else tween(500, easing = LinearEasing),
+        label = "waveform_progress"
     )
+    val played = MaterialTheme.colorScheme.onBackground
+    val unplayed = played.copy(alpha = 0.28f)
 
+    fun seek(fraction: Float) {
+        player.seekTo((fraction.coerceIn(0f, 1f) * currentDuration).toLong())
+    }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(44.dp)
+            .pointerInput(Unit) {
+                detectTapGestures { seek(it.x / size.width) }
+            }
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { scrubValue = (it.x / size.width).coerceIn(0f, 1f) },
+                    onDragEnd = {
+                        scrubValue?.let(::seek)
+                        scrubValue = null
+                    },
+                    onDragCancel = { scrubValue = null }
+                ) { change, _ ->
+                    scrubValue = (change.position.x / size.width).coerceIn(0f, 1f)
+                }
+            }
+    ) {
+        val gap = 1.6.dp.toPx()
+        val barWidth = (size.width - gap * (bars.size - 1)) / bars.size
+        bars.forEachIndexed { index, height ->
+            val barHeight = size.height * height
+            val center = (index + 0.5f) / bars.size
+            drawRoundRect(
+                color = if (center <= progress) played else unplayed,
+                topLeft = Offset(index * (barWidth + gap), (size.height - barHeight) / 2),
+                size = Size(barWidth, barHeight),
+                cornerRadius = CornerRadius(barWidth / 2)
+            )
+        }
+    }
+
+    VSpace(6.dp)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
@@ -744,8 +789,7 @@ private fun PlaybackProgress(
         val displayPosition = scrubValue?.let { (it * duration).toLong() } ?: position
         Text(
             text = formatTime(displayPosition),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            style = MaterialTheme.typography.bodySmall
         )
         Text(
             text = formatTime(duration),
@@ -754,6 +798,20 @@ private fun PlaybackProgress(
         )
     }
 }
+
+private fun waveformBars(seed: String, count: Int = WAVEFORM_BARS): List<Float> {
+    val random = Random(seed.hashCode())
+    var level = 0.5f
+    return List(count) { index ->
+        // Dihaluskan dengan nilai sebelumnya supaya naik-turunnya mirip
+        // lagu, lalu diberi selubung agar tengah lagu lebih "ramai".
+        level = level * 0.25f + (0.1f + random.nextFloat() * 0.9f) * 0.75f
+        val envelope = 0.1f + 0.9f * sin(index.toFloat() / count * PI.toFloat())
+        (level * envelope).coerceIn(0.06f, 1f)
+    }
+}
+
+private const val WAVEFORM_BARS = 96
 
 private fun formatTime(ms: Long): String {
     if (ms <= 0) return "0:00"

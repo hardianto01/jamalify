@@ -1,5 +1,16 @@
 package com.jamalsquad.jamalify
 
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.shadow
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.jamalsquad.jamalify.ui.viewmodel.PlayerViewModel
+import com.jamalsquad.jamalify.ui.components.VSpace
+import com.jamalsquad.jamalify.ui.components.NavIcons
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.Intent
@@ -21,6 +32,21 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.draw.clip
+import com.jamalsquad.jamalify.ui.components.glow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -68,6 +94,7 @@ import com.jamalsquad.jamalify.ui.components.MiniPlayer
 import com.jamalsquad.jamalify.ui.components.SongSheetHost
 import com.jamalsquad.jamalify.ui.components.rememberSongSheetController
 import com.jamalsquad.jamalify.ui.screens.AboutScreen
+import com.jamalsquad.jamalify.ui.screens.SettingsScreen
 import com.jamalsquad.jamalify.ui.screens.HomeScreen
 import com.jamalsquad.jamalify.ui.screens.ImportScreen
 import com.jamalsquad.jamalify.ui.screens.LibraryScreen
@@ -76,6 +103,11 @@ import com.jamalsquad.jamalify.ui.screens.PlaylistScreen
 import com.jamalsquad.jamalify.ui.screens.SearchScreen
 import com.jamalsquad.jamalify.ui.screens.SplashScreen
 import com.jamalsquad.jamalify.ui.theme.JamalifyTheme
+import com.jamalsquad.jamalify.ui.theme.isDarkTheme
+import android.graphics.drawable.ColorDrawable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.toArgb
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 
 @UnstableApi
@@ -94,7 +126,20 @@ class MainActivity : ComponentActivity() {
         handleSpotifyRedirect(intent)
 
         setContent {
-            JamalifyTheme {
+            val dark = isDarkTheme()
+            // Warna jendela dan ikon status bar dari XML hanya mengikuti
+            // sistem; samakan dengan pilihan tema di aplikasi.
+            SideEffect {
+                val bar = (if (dark) DarkWindow else LightWindow).toArgb()
+                window.statusBarColor = bar
+                window.navigationBarColor = bar
+                window.setBackgroundDrawable(ColorDrawable(bar))
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+            JamalifyTheme(darkTheme = dark) {
                 var showSplash by remember { mutableStateOf(true) }
                 LaunchedEffect(Unit) {
                     delay(SPLASH_MILLIS)
@@ -152,13 +197,25 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private sealed class Destination(val route: String, val label: String, val icon: ImageVector) {
-    data object Home : Destination("home", "Beranda", Icons.Rounded.Home)
-    data object Search : Destination("search", "Cari", Icons.Rounded.Search)
-    data object Library : Destination("library", "Library", Icons.Rounded.LibraryMusic)
+private sealed class Destination(
+    val route: String,
+    val label: String,
+    val icon: ImageVector,
+    val idleIcon: ImageVector
+) {
+    data object Home : Destination("home", "Beranda", NavIcons.HomeFilled, NavIcons.Home)
+    data object Search : Destination("search", "Cari", NavIcons.SearchBold, NavIcons.Search)
+    data object Library : Destination("library", "Library", NavIcons.LibraryFilled, NavIcons.Library)
 }
 
+private val NavBarHeight = 80.dp
+/** Bagian bawah mini player yang diselipkan di belakang bottom bar. */
+private val DockTuck = 28.dp
+
 private const val SPLASH_MILLIS = 1700L
+
+private val LightWindow = Color.White
+private val DarkWindow = com.jamalsquad.jamalify.ui.theme.Night
 
 private val BOTTOM_ITEMS = listOf(Destination.Home, Destination.Search, Destination.Library)
 
@@ -170,6 +227,8 @@ private fun JamalifyRoot() {
     val player = app.playerConnection
 
     val currentSong by player.currentSong.collectAsState()
+    val playerViewModel: PlayerViewModel = viewModel()
+    val isFavorite by playerViewModel.isFavorite.collectAsState()
     val isPlaying by player.isPlaying.collectAsState()
     // Posisi berubah tiap 500ms. Dibaca sebagai State dan baru dibaca di
     // dalam lambda progres, supaya yang digambar ulang hanya bilah progres —
@@ -202,41 +261,46 @@ private fun JamalifyRoot() {
         }
     }
 
+
     val play: (List<Song>, Int) -> Unit = remember(player) { { songs, index -> player.play(songs, index) } }
+
+    val selectTab: (Destination) -> Unit = { item ->
+        showPlayer = false
+        navController.navigate(item.route) {
+            popUpTo(Destination.Home.route) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            Column {
+            val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            Box(modifier = Modifier.fillMaxWidth()) {
                 MiniPlayer(
                     song = currentSong,
                     isPlaying = isPlaying,
+                    isFavorite = isFavorite,
                     progress = {
                         val total = duration.value
                         if (total > 0) position.value.toFloat() / total else 0f
                     },
                     onExpand = { showPlayer = true },
                     onPlayPause = player::togglePlayPause,
-                    onNext = player::next
+                    onToggleFavorite = playerViewModel::toggleFavorite,
+                    tuck = if (showBottomBar) DockTuck else navInset,
+                    modifier = Modifier.padding(
+                        bottom = if (showBottomBar) NavBarHeight + navInset - DockTuck else 0.dp
+                    )
                 )
                 if (showBottomBar) {
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        BOTTOM_ITEMS.forEach { item ->
-                            NavigationBarItem(
-                                selected = currentRoute == item.route,
-                                onClick = {
-                                    navController.navigate(item.route) {
-                                        popUpTo(Destination.Home.route) { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = { Icon(item.icon, contentDescription = item.label) },
-                                label = { Text(item.label) }
-                            )
-                        }
-                    }
+                    DockNavBar(
+                        currentRoute = currentRoute,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        onSelect = selectTab
+                    )
                 }
             }
         }
@@ -269,6 +333,8 @@ private fun JamalifyRoot() {
             composable(Destination.Home.route) {
                 HomeScreen(
                     currentSongId = currentSong?.id,
+                    onOpenSettings = { navController.navigate("settings") },
+                    onOpenPlaylist = { navController.navigate("playlist/$it") },
                     onPlay = play,
                     sheet = sheet,
                     contentPadding = contentPadding
@@ -288,7 +354,6 @@ private fun JamalifyRoot() {
                     onPlay = play,
                     onOpenPlaylist = { navController.navigate("playlist/$it") },
                     onOpenImport = { navController.navigate("import") },
-                    onOpenAbout = { navController.navigate("about") },
                     sheet = sheet,
                     contentPadding = contentPadding
                 )
@@ -312,6 +377,23 @@ private fun JamalifyRoot() {
                     onShuffle = { songs -> player.play(songs.shuffled(), 0) },
                     onBack = { navController.popBackStack() },
                     sheet = sheet,
+                    contentPadding = contentPadding
+                )
+            }
+            composable(
+                route = "settings",
+                enterTransition = {
+                    slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it / 4 } +
+                        fadeIn(tween(240))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { it / 4 } +
+                        fadeOut(tween(200))
+                },
+            ) {
+                SettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenAbout = { navController.navigate("about") },
                     contentPadding = contentPadding
                 )
             }
@@ -380,11 +462,98 @@ private fun JamalifyRoot() {
             color = MaterialTheme.colorScheme.background,
             contentColor = MaterialTheme.colorScheme.onBackground
         ) {
+            // Bottom bar tetap tampil di pemutar, seperti desain acuan; tab
+            // yang disorot adalah layar di bawah pemutar.
+            val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             Box(
-                modifier = Modifier.fillMaxSize().systemBarsPadding(),
+                modifier = Modifier.fillMaxSize().statusBarsPadding(),
                 contentAlignment = Alignment.TopCenter
             ) {
-                PlayerScreen(onCollapse = { showPlayer = false })
+                Box(modifier = Modifier.padding(bottom = NavBarHeight + navInset)) {
+                    PlayerScreen(onCollapse = { showPlayer = false })
+                }
+                DockNavBar(
+                    currentRoute = currentRoute,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    onSelect = selectTab
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Bottom bar berupa panel penuh bersudut atas membulat, seperti desain
+ * acuan. Tab terpilih: ikon terisi, label tebal, dan pendar lembut di
+ * belakang ikonnya; sisanya ikon garis tipis yang redup.
+ */
+@Composable
+private fun DockNavBar(
+    currentRoute: String?,
+    onSelect: (Destination) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .shadow(16.dp, shape)
+            .background(colors.background, shape)
+            .navigationBarsPadding()
+            .height(NavBarHeight)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        BOTTOM_ITEMS.forEach { item ->
+            val selected = currentRoute == item.route
+            val tint by animateColorAsState(
+                if (selected) colors.onBackground else colors.onSurfaceVariant,
+                tween(220),
+                label = "nav_tint"
+            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onSelect(item) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .then(if (selected) Modifier.glow(alpha = 0.35f, spread = 0.95f) else Modifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (selected) item.icon else item.idleIcon,
+                        contentDescription = item.label,
+                        tint = tint,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    // Ikon library terisi butuh notnya "dilubangi"; Icon hanya
+                    // bisa satu warna, jadi not ditumpuk dengan warna latar.
+                    if (selected && item == Destination.Library) {
+                        Icon(
+                            imageVector = NavIcons.LibraryNote,
+                            contentDescription = null,
+                            tint = colors.background,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+                VSpace(4.dp)
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                    ),
+                    color = tint
+                )
             }
         }
     }
